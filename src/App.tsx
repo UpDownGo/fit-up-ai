@@ -22,7 +22,7 @@ const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
     <div className="flex flex-col items-center justify-center text-center p-8">
         <svg className="animate-spin -ml-1 mr-3 h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 R0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
         <p className="mt-4 text-lg text-gray-300">{message}</p>
     </div>
@@ -294,26 +294,7 @@ const App: React.FC = () => {
                 } catch (err) {
                     const detailedError = err instanceof Error ? err.message : String(err);
                     console.error("Virtual try-on failed:", err);
-                    
-                    let displayError = detailedError;
-                    // Attempt to parse a more specific message from a potential JSON error string
-                    if (detailedError.includes('exceeded your current quota')) {
-                        displayError = "You exceeded your current API quota. Please check your plan and billing details.";
-                    } else if (detailedError.trim().startsWith('[') && detailedError.trim().endsWith(']')) {
-                        try {
-                            const errorArray = JSON.parse(detailedError);
-                            if (Array.isArray(errorArray) && errorArray.length > 0 && errorArray[0].error?.message) {
-                                displayError = errorArray[0].error.message.split('.')[0] + '.';
-                            }
-                        } catch (e) {
-                            // It looked like JSON but wasn't, so we'll just display it as is.
-                        }
-                    } else if (detailedError.includes('No image was generated')) {
-                        // Handle the custom errors from geminiService
-                        displayError = detailedError.replace('No image was generated.', '').trim();
-                    }
-
-                    const finalErrorMessage = `${t('generationFailedError')} [${displayError}]`;
+                    const finalErrorMessage = `${t('generationFailedError')} [${detailedError}]`;
                     setError(finalErrorMessage);
                     setAppState(AppState.ERROR);
                 } finally {

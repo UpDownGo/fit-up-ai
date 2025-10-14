@@ -79,8 +79,8 @@ export const detectPeopleInImage = async (imageBase64: string, model: string): P
         return [];
     } catch (e) {
         console.error("Failed during person detection API call:", e);
-        const errorMessage = e instanceof Error ? e.message : "Could not detect people in the image.";
-        throw new Error(errorMessage);
+        const detailedError = (e as any)?.message || "Could not detect people in the image.";
+        throw new Error(detailedError);
     }
 };
 
@@ -92,6 +92,7 @@ const promptTemplates = {
     2. **현실적 변형 (Realistic Warping):** 합성 시 Target Person의 몸 형태와 자세에 맞게 옷의 형태를 현실적으로 변형(Warping)해야 합니다.
     3. **광원 및 그림자 (Lighting and Shadows):** 합성 결과가 이질감 없이 보이도록 Target Image의 주변 환경 광원과 그림자 효과를 완벽하게 반영하여 최종 이미지를 생성합니다.
     4. **비율 유지 (Aspect Ratio Preservation):** 최종 결과 이미지는 원본 Target Image와 동일한 가로세로 비율을 유지해야 합니다. 이미지를 자르거나 비율을 변경하지 마세요.
+    5. **출력 형식 (Output Format):** 최종 결과물은 텍스트, 마크다운 또는 다른 설명 없이 오직 편집된 이미지 파일 하나여야 합니다.
   `,
   en: `
     Remove the current clothing from the person in the Target Person Area of the Target Image, and naturally synthesize the clothing from the Source Garment Area of the Source Image onto that person.
@@ -100,6 +101,7 @@ const promptTemplates = {
     2. **Realistic Warping:** The shape of the clothing must be realistically warped to fit the body shape and posture of the Target Person.
     3. **Lighting and Shadows:** Perfectly reflect the ambient lighting and shadow effects of the Target Image's environment to create a final image that looks natural and seamless.
     4. **Aspect Ratio Preservation:** The final output image must have the exact same aspect ratio as the original Target Image. Do not crop or alter the aspect ratio of the image.
+    5. **Output Format:** The final output must be a single, edited image file with no surrounding text, markdown, or explanations.
   `
 };
 
@@ -189,7 +191,7 @@ export const generateVirtualTryOnImage = async (
       }
     } catch(e) {
         console.error("Failed during image generation API call:", e);
-        const errorMessage = e instanceof Error ? e.message : "Could not generate image.";
-        throw new Error(errorMessage);
+        const detailedError = (e as any)?.message || "Could not generate image.";
+        throw new Error(detailedError);
     }
 };
