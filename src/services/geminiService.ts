@@ -1,12 +1,15 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BoundingBox, DetectedPerson, Language } from '../types';
 
+// Use import.meta.env for client-side variables in Vite
+const apiKey = import.meta.env.VITE_API_KEY;
+
 // The app will now handle a missing API key gracefully in the UI.
 // API calls will fail if the key is missing, which will be caught by the app.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const ai = new GoogleGenAI({ apiKey: apiKey || '' });
 
 export const isApiKeyAvailable = (): boolean => {
-    return !!process.env.API_KEY;
+    return !!apiKey;
 }
 
 const getMimeType = (base64: string) => {
