@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AppState, BoundingBox, DetectedPerson, HistoryItem } from './types';
 import { useLocalization } from './context/LocalizationContext';
 import { detectPeopleInImage, generateVirtualTryOnImage } from './services/geminiService';
-import { blobToBase64 } from './utils/fileUtils';
+import { blobToBase64, urlToBase64 } from './utils/fileUtils';
 import { checkImageQuality } from './utils/imageQuality';
 
 import { ImageUploader } from './components/ImageUploader';
@@ -31,6 +31,9 @@ const App: React.FC = () => {
     const [history, setHistory] = useState<HistoryItem[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [loadingMessage, setLoadingMessage] = useState('');
+    const [imageUrl, setImageUrl] = useState('');
+    const [isFetchingUrl, setIsFetchingUrl] = useState(false);
+    const [isPasting, setIsPasting] = useState(false);
     
     const { t, language, setLanguage } = useLocalization();
 
@@ -44,6 +47,7 @@ const App: React.FC = () => {
         setGeneratedImage(null);
         setError(null);
         setLoadingMessage('');
+        setImageUrl('');
     }, []);
 
     const handleImageFile = async (file: File, imageSetter: (b64: string) => void, nextState: AppState) => {
@@ -68,6 +72,29 @@ const App: React.FC = () => {
             setLoadingMessage('');
         }
     };
+    
+    const processProvidedImage = async (base64Provider: () => Promise<string>) => {
+        setLoadingMessage(t('analyzingImageQuality'));
+        setAppState(AppState.GENERATING);
+        setError(null);
+        try {
+            const base64 = await base64Provider();
+            const qualityResult = await checkImageQuality(base64);
+            if (!qualityResult.isOk) {
+                const issues = qualityResult.issues.map(issue => t(issue)).join(', ');
+                throw new Error(`${t('imageQualityError')}: ${issues}`);
+            }
+            setSourceImage(base64);
+            setAppState(AppState.SOURCE_IMAGE_UPLOADED);
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : t('imageProcessingError');
+            setError(errorMessage);
+            setAppState(AppState.ERROR);
+        } finally {
+            setLoadingMessage('');
+        }
+    };
+
 
     const handleTargetImageUpload = (file: File) => {
         handleImageFile(file, setTargetImage, AppState.ANALYZING_TARGET_IMAGE);
@@ -76,6 +103,45 @@ const App: React.FC = () => {
     const handleSourceImageUpload = (file: File) => {
         handleImageFile(file, setSourceImage, AppState.SOURCE_IMAGE_UPLOADED);
     };
+
+    const handleUrlSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!imageUrl || isFetchingUrl) return;
+
+        setIsFetchingUrl(true);
+        await processProvidedImage(() => urlToBase64(imageUrl, 5 * 1024 * 1024));
+        setIsFetchingUrl(false);
+    };
+
+    const handlePasteFromClipboard = async () => {
+        if (!navigator.clipboard?.read) {
+            setError(t('clipboardApiNotSupportedError'));
+            setAppState(AppState.ERROR);
+            return;
+        }
+        setIsPasting(true);
+        setError(null);
+        try {
+            const items = await navigator.clipboard.read();
+            const imageItem = items.find(item => item.types.some(type => type.startsWith('image/')));
+            if (!imageItem) {
+                throw new Error(t('clipboardEmptyError'));
+            }
+            const blob = await imageItem.getType(imageItem.types.find(type => type.startsWith('image/'))!);
+            await processProvidedImage(() => blobToBase64(blob));
+
+        } catch (err) {
+            if (err instanceof DOMException && err.name === 'NotAllowedError') {
+                setError(t('clipboardPermissionError'));
+            } else {
+                setError(err instanceof Error ? err.message : t('imageUploadFailed'));
+            }
+            setAppState(AppState.ERROR);
+        } finally {
+            setIsPasting(false);
+        }
+    };
+
 
     const handlePersonSelected = (person: DetectedPerson) => {
         setSelectedPerson(person);
@@ -184,7 +250,45 @@ const App: React.FC = () => {
                 );
 
             case AppState.SOURCE_TYPE_CHOSEN:
-                return <ImageUploader onImageUpload={handleSourceImageUpload} title={t('step4Title')} description={t('step4Description')} />;
+                return (
+                    <div className="w-full max-w-lg mx-auto flex flex-col gap-6">
+                        <ImageUploader onImageUpload={handleSourceImageUpload} title={t('step4Title')} description={t('step4Description')} />
+                        
+                        <div className="flex items-center w-full">
+                            <hr className="flex-grow border-gray-600" />
+                            <span className="px-4 text-gray-400 font-semibold">{t('orDivider')}</span>
+                            <hr className="flex-grow border-gray-600" />
+                        </div>
+    
+                        <button 
+                            onClick={handlePasteFromClipboard} 
+                            disabled={isPasting} 
+                            className="w-full px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-white font-semibold transition-colors duration-300 disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+                                <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+                            </svg>
+                            {isPasting ? t('pastingFromClipboardButton') : t('pasteFromClipboardButton')}
+                        </button>
+    
+                        <form onSubmit={handleUrlSubmit} className="flex flex-col gap-2">
+                            <div className="flex gap-2">
+                                <input
+                                    id="url-input"
+                                    type="url"
+                                    value={imageUrl}
+                                    onChange={(e) => setImageUrl(e.target.value)}
+                                    placeholder={t('urlInputPlaceholder')}
+                                    className="flex-grow bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                />
+                                <button type="submit" disabled={isFetchingUrl || !imageUrl} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold transition-colors duration-300 disabled:opacity-50">
+                                    {isFetchingUrl ? t('fetchingUrlButton') : t('useUrlButton')}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                );
 
             case AppState.SOURCE_IMAGE_UPLOADED:
                  if (!sourceImage) return null;

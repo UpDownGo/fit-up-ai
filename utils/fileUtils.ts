@@ -10,6 +10,8 @@ export const blobToBase64 = (blob: Blob): Promise<string> => {
 
 export const urlToBase64 = async (url: string, maxSize: number): Promise<string> => {
     try {
+        // Use a CORS proxy for development or if direct fetching is blocked
+        // const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
         const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`Failed to fetch image. Status: ${response.status}`);

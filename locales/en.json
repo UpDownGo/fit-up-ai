@@ -35,11 +35,17 @@
   "generatingText": "Generating your virtual try-on... This may take a moment.",
   "generationFailed": "The virtual try-on could not be generated.",
   "resultTitle": "Generation Complete!",
-  "originalImage": "Original Image",
-  "generatedImage": "Generated Image",
-  "tryAgainButton": "Try Again",
   "downloadButton": "Download",
   "errorTitle": "An Error Occurred",
+  "startOverButton": "Start Over",
+  "analyzingImageQuality": "Analyzing image quality...",
+  "detectingPeople": "Detecting people in the image...",
+  "generatingImage": "Generating virtual try-on...",
+  "imageQualityError": "There's an issue with the image quality",
+  "imageProcessingError": "An error occurred while processing the image.",
+  "detectionFailedError": "Failed to detect people in the image. Please try another photo.",
+  "generationFailedError": "Failed to generate the virtual try-on image. The model might be busy or the request could not be processed. Please try again.",
   "historyTitle": "Generation History",
-  "clearHistoryButton": "Clear History"
+  "clearHistoryButton": "Clear History",
+  "footerText": "Powered by Gemini"
 }

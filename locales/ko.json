@@ -35,11 +35,17 @@
   "generatingText": "가상 피팅 이미지를 생성 중입니다... 잠시만 기다려 주세요.",
   "generationFailed": "가상 피팅 이미지를 생성할 수 없습니다.",
   "resultTitle": "생성 완료!",
-  "originalImage": "원본 이미지",
-  "generatedImage": "생성된 이미지",
-  "tryAgainButton": "다시 시도",
   "downloadButton": "다운로드",
   "errorTitle": "오류가 발생했습니다",
+  "startOverButton": "처음부터 시작",
+  "analyzingImageQuality": "이미지 품질 분석 중...",
+  "detectingPeople": "이미지에서 사람 감지 중...",
+  "generatingImage": "가상 피팅 이미지 생성 중...",
+  "imageQualityError": "이미지 품질에 문제가 있습니다",
+  "imageProcessingError": "이미지를 처리하는 동안 오류가 발생했습니다.",
+  "detectionFailedError": "이미지에서 사람을 감지하지 못했습니다. 다른 사진으로 시도해 주세요.",
+  "generationFailedError": "가상 피팅 이미지 생성에 실패했습니다. 모델이 사용 중이거나 요청을 처리할 수 없습니다. 다시 시도해 주세요.",
   "historyTitle": "생성 기록",
-  "clearHistoryButton": "기록 지우기"
+  "clearHistoryButton": "기록 지우기",
+  "footerText": "Gemini 기반"
 }
