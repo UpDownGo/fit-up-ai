@@ -1,0 +1,5 @@
+{
+  "name": "Virtual Try-On AI",
+  "description": "An application that uses AI to let users virtually try on clothes from any image. Users can select a person in a photo and a piece of clothing from the same or another photo, and the AI will generate a new image with the clothing realistically worn by the person.",
+  "requestFramePermissions": []
+}
