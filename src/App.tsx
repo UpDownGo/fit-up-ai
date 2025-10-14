@@ -343,7 +343,10 @@ const App: React.FC = () => {
                     setHistory(prev => [newHistoryItem, ...prev]);
                     setAppState(AppState.RESULT_READY);
                 } catch (err) {
-                    setError(t('generationFailedError'));
+                    const detailedError = err instanceof Error ? err.message : String(err);
+                    console.error("Virtual try-on failed:", err);
+                    const finalErrorMessage = `${t('generationFailedError')} [${detailedError}]`;
+                    setError(finalErrorMessage);
                     setAppState(AppState.ERROR);
                 } finally {
                     setLoadingMessage('');

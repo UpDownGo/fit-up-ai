@@ -159,8 +159,18 @@ export const generateVirtualTryOnImage = async (
     const mimeType = imagePart.inlineData.mimeType;
     return `data:${mimeType};base64,${base64ImageBytes}`;
   } else {
-    const responseText = response.text || "No text found.";
     console.error("Full Gemini Response for debugging:", JSON.stringify(response, null, 2));
-    throw new Error(`No image was generated. The model may have returned text instead: ${responseText}`);
+    const blockReason = response.candidates?.[0]?.finishReason;
+    const safetyRatings = response.candidates?.[0]?.safetyRatings;
+    const responseText = response.text || "No text found.";
+    
+    let detailedReason = `The model returned text instead of an image: "${responseText}"`;
+    if (blockReason === 'SAFETY') {
+        detailedReason = `Request was blocked for safety reasons. Ratings: ${JSON.stringify(safetyRatings)}`;
+    } else if (blockReason && blockReason !== 'STOP') {
+        detailedReason = `Generation finished unexpectedly. Reason: ${blockReason}.`;
+    }
+
+    throw new Error(`No image was generated. ${detailedReason}`);
   }
 };
