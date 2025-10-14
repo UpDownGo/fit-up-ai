@@ -56,5 +56,7 @@
   "settingsTitle": "Settings",
   "detectionModelLabel": "Person Detection Model",
   "generationModelLabel": "Image Generation Model",
-  "saveSettingsButton": "Save Settings"
+  "saveSettingsButton": "Save Settings",
+  "apiKeyConnected": "API Key Connected",
+  "apiKeyMissing": "API Key Missing"
 }

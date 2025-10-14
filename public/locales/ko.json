@@ -56,5 +56,7 @@
   "settingsTitle": "설정",
   "detectionModelLabel": "사람 감지 모델",
   "generationModelLabel": "이미지 생성 모델",
-  "saveSettingsButton": "설정 저장"
+  "saveSettingsButton": "설정 저장",
+  "apiKeyConnected": "API 키 연결됨",
+  "apiKeyMissing": "API 키가 없습니다"
 }

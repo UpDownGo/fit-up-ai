@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppState, BoundingBox, DetectedPerson, HistoryItem, AppSettings } from './types';
 import { useLocalization } from './context/LocalizationContext';
-import { detectPeopleInImage, generateVirtualTryOnImage } from './services/geminiService';
+import { detectPeopleInImage, generateVirtualTryOnImage, isApiKeyAvailable } from './services/geminiService';
 import { blobToBase64, urlToBase64 } from './utils/fileUtils';
 import { checkImageQuality } from './utils/imageQuality';
 import { saveData, loadData, clearDB } from './utils/db';
@@ -45,10 +45,13 @@ const App: React.FC = () => {
         detectionModel: 'gemini-2.5-flash',
         generationModel: 'gemini-2.5-flash-image',
     });
+    const [isApiKeyOk, setIsApiKeyOk] = useState(false);
     
     const { t, language, setLanguage } = useLocalization();
     
     useEffect(() => {
+        setIsApiKeyOk(isApiKeyAvailable());
+        
         const loadStateFromStorage = async () => {
             const savedSettingsJSON = localStorage.getItem(SETTINGS_STORAGE_KEY);
             if (savedSettingsJSON) {
@@ -530,7 +533,20 @@ const App: React.FC = () => {
             )}
             
             <footer className="text-center py-6 text-gray-500 text-sm border-t border-gray-800">
-                <p>{t('footerText')}</p>
+                <div className="flex items-center justify-center gap-4">
+                    <p>{t('footerText')}</p>
+                    {isApiKeyOk ? (
+                        <div className="flex items-center gap-1.5 text-green-400">
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                            <span>{t('apiKeyConnected')}</span>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-1.5 text-red-400">
+                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                            <span>{t('apiKeyMissing')}</span>
+                        </div>
+                    )}
+                </div>
             </footer>
         </div>
     );
