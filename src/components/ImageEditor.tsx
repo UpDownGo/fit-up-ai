@@ -30,6 +30,12 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
   const [adjustableBox, setAdjustableBox] = useState<BoundingBox | null>(null);
   const [dragState, setDragState] = useState<DragState>(null);
   const [touchStart, setTouchStart] = useState<{ x: number, y: number } | null>(null);
+  const [isBoxInitialized, setIsBoxInitialized] = useState(false);
+
+  useEffect(() => {
+    // Reset initialization state when the source image changes
+    setIsBoxInitialized(false);
+  }, [imageSrc]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -48,6 +54,29 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
       
       canvas.width = containerWidth;
       canvas.height = canvasHeight;
+
+      // Initialize the adjustable box inside onload to avoid race conditions with canvas sizing
+      if (isTouchDevice && !isBoxInitialized) {
+        if (garmentBox) {
+            setAdjustableBox({
+                x: garmentBox.x * canvas.width,
+                y: garmentBox.y * canvas.height,
+                width: garmentBox.width * canvas.width,
+                height: garmentBox.height * canvas.height,
+            });
+        } else {
+            const defaultWidth = canvas.width * 0.5;
+            const defaultHeight = canvas.height * 0.5;
+            setAdjustableBox({
+                x: (canvas.width - defaultWidth) / 2,
+                y: (canvas.height - defaultHeight) / 2,
+                width: defaultWidth,
+                height: defaultHeight,
+            });
+        }
+        setIsBoxInitialized(true);
+      }
+
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
       const drawStyledBox = (b: BoundingBox, color: string, lineWidth: number, isAdjustable: boolean = false) => {
@@ -87,7 +116,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
 
       if (isTouchDevice && adjustableBox) {
         drawStyledBox(adjustableBox, boxColor, 3, true);
-      } else if (garmentBox && !isDrawing) {
+      } else if (!isTouchDevice && garmentBox && !isDrawing) {
         drawStyledBox({
           x: garmentBox.x * canvas.width,
           y: garmentBox.y * canvas.height,
@@ -100,38 +129,17 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
         drawStyledBox(box, boxColor, 3);
       }
     };
-  }, [imageSrc, box, boxColor, existingBox, garmentBox, isDrawing, adjustableBox, isTouchDevice]);
+  }, [imageSrc, box, boxColor, existingBox, garmentBox, isDrawing, adjustableBox, isTouchDevice, isBoxInitialized]);
 
   useEffect(() => {
     draw();
-    const handleResize = () => draw();
+    const handleResize = () => {
+      setIsBoxInitialized(false); // Re-initialize box on resize
+      draw();
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [draw]);
-
-  useEffect(() => {
-    if (isTouchDevice && !garmentBox) {
-        const canvas = canvasRef.current;
-        if (canvas) {
-          const defaultWidth = canvas.width * 0.5;
-          const defaultHeight = canvas.height * 0.5;
-          setAdjustableBox({
-            x: (canvas.width - defaultWidth) / 2,
-            y: (canvas.height - defaultHeight) / 2,
-            width: defaultWidth,
-            height: defaultHeight,
-          });
-        }
-    } else if (isTouchDevice && garmentBox && canvasRef.current) {
-        const canvas = canvasRef.current;
-        setAdjustableBox({
-            x: garmentBox.x * canvas.width,
-            y: garmentBox.y * canvas.height,
-            width: garmentBox.width * canvas.width,
-            height: garmentBox.height * canvas.height,
-        });
-    }
-  }, [isTouchDevice, imageSrc, garmentBox]);
 
 
   const getCanvasPos = (clientX: number, clientY: number): { x: number; y: number } => {
@@ -262,7 +270,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
           className={`rounded-lg shadow-lg ${isTouchDevice ? '' : 'cursor-crosshair'}`}
         />
       </div>
-      {isTouchDevice && !garmentBox && (
+      {isTouchDevice && (
          <button 
             onClick={handleConfirmSelection}
             className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold transition-colors duration-300"

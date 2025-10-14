@@ -4,6 +4,7 @@ import { useLocalization } from './context/LocalizationContext';
 import { detectPeopleInImage, generateVirtualTryOnImage } from './services/geminiService';
 import { blobToBase64, urlToBase64 } from './utils/fileUtils';
 import { checkImageQuality } from './utils/imageQuality';
+import { saveData, loadData, clearDB } from './utils/db';
 
 import { ImageUploader } from './components/ImageUploader';
 import { PersonSelector } from './components/PersonSelector';
@@ -48,36 +49,57 @@ const App: React.FC = () => {
     const { t, language, setLanguage } = useLocalization();
     
     useEffect(() => {
-        const savedSettingsJSON = localStorage.getItem(SETTINGS_STORAGE_KEY);
-        if (savedSettingsJSON) {
-            try {
-                const savedSettings = JSON.parse(savedSettingsJSON);
-                setSettings(savedSettings);
-            } catch (e) {
-                console.error("Failed to parse settings from localStorage", e);
-            }
-        }
-
-        const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (savedStateJSON) {
-            try {
-                const savedState = JSON.parse(savedStateJSON);
-                if (savedState && savedState.appState) {
-                    setAppState(savedState.appState);
-                    setTargetImage(savedState.targetImage || null);
-                    setSourceImage(savedState.sourceImage || null);
-                    setDetectedPeople(savedState.detectedPeople || []);
-                    setSelectedPerson(savedState.selectedPerson || null);
-                    setSourceGarmentBox(savedState.sourceGarmentBox || null);
-                    setLanguage(savedState.language || 'ko');
-                    setHistory(savedState.history || []);
-                    setShowRestoreNotification(true);
+        const loadStateFromStorage = async () => {
+            const savedSettingsJSON = localStorage.getItem(SETTINGS_STORAGE_KEY);
+            if (savedSettingsJSON) {
+                try {
+                    const savedSettings = JSON.parse(savedSettingsJSON);
+                    setSettings(savedSettings);
+                } catch (e) {
+                    console.error("Failed to parse settings from localStorage", e);
                 }
-            } catch (e) {
-                console.error("Failed to parse saved state from localStorage", e);
-                localStorage.removeItem(LOCAL_STORAGE_KEY);
             }
-        }
+
+            const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
+            if (savedStateJSON) {
+                try {
+                    const savedState = JSON.parse(savedStateJSON);
+                    if (savedState && savedState.appState) {
+                        setAppState(savedState.appState);
+                        setDetectedPeople(savedState.detectedPeople || []);
+                        setSelectedPerson(savedState.selectedPerson || null);
+                        setSourceGarmentBox(savedState.sourceGarmentBox || null);
+                        setLanguage(savedState.language || 'ko');
+                        setShowRestoreNotification(true);
+
+                        if (savedState.hasTargetImage) {
+                            const img = await loadData<string>('targetImage');
+                            if (img) setTargetImage(img);
+                        }
+                        if (savedState.hasSourceImage) {
+                            const img = await loadData<string>('sourceImage');
+                            if (img) setSourceImage(img);
+                        }
+                        if (savedState.history && Array.isArray(savedState.history)) {
+                            const restoredHistory: HistoryItem[] = [];
+                            for (const ref of savedState.history) {
+                                const img = await loadData<string>(ref.id);
+                                if (img) {
+                                    restoredHistory.push({ id: ref.id, generatedImage: img });
+                                }
+                            }
+                            setHistory(restoredHistory);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to parse or load state", e);
+                    localStorage.removeItem(LOCAL_STORAGE_KEY);
+                    await clearDB();
+                }
+            }
+        };
+
+        loadStateFromStorage();
     }, []);
 
     useEffect(() => {
@@ -89,17 +111,37 @@ const App: React.FC = () => {
             AppState.GARMENT_SELECTED,
         ];
 
-        if (savableStates.includes(appState)) {
-            const stateToSave = {
-                appState, targetImage, sourceImage, detectedPeople,
-                selectedPerson, sourceGarmentBox, language, history,
-            };
-            try {
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
-            } catch (e) {
-                console.error("Failed to save state to localStorage", e);
+        const saveStateToStorage = async () => {
+            if (savableStates.includes(appState)) {
+                try {
+                    if (targetImage) await saveData('targetImage', targetImage);
+                    if (sourceImage) await saveData('sourceImage', sourceImage);
+                    
+                    const historyReferences = [];
+                    for (const item of history) {
+                        await saveData(item.id, item.generatedImage);
+                        historyReferences.push({ id: item.id });
+                    }
+
+                    const stateToSave = {
+                        appState,
+                        hasTargetImage: !!targetImage,
+                        hasSourceImage: !!sourceImage,
+                        detectedPeople,
+                        selectedPerson,
+                        sourceGarmentBox,
+                        language,
+                        history: historyReferences,
+                    };
+                    
+                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
+                } catch (e) {
+                    console.error("Failed to save state", e);
+                }
             }
-        }
+        };
+
+        saveStateToStorage();
     }, [appState, targetImage, sourceImage, detectedPeople, selectedPerson, sourceGarmentBox, language, history]);
 
     const handleSaveSettings = (newSettings: AppSettings) => {
@@ -123,6 +165,7 @@ const App: React.FC = () => {
         setLoadingMessage('');
         setImageUrl('');
         localStorage.removeItem(LOCAL_STORAGE_KEY);
+        clearDB().catch(e => console.error("Failed to clear IndexedDB", e));
     }, []);
 
     const handleImageFile = async (file: File, imageSetter: (b64: string) => void, nextState: AppState) => {
