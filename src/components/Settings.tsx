@@ -49,6 +49,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onSave, cur
             >
               <option value="gemini-2.5-flash">gemini-2.5-flash</option>
               <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+              <option value="gemini-flash-latest">gemini-flash-latest</option>
+              <option value="gemini-flash-lite-latest">gemini-flash-lite-latest</option>
             </select>
           </div>
           <div>

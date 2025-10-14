@@ -1,6 +1,9 @@
+import { HistoryItem } from "../types";
+
 const DB_NAME = 'FitUpDB';
-const STORE_NAME = 'images';
-const DB_VERSION = 1;
+const SESSION_STORE_NAME = 'session';
+const HISTORY_STORE_NAME = 'history';
+const DB_VERSION = 2; // Version incremented to trigger schema upgrade
 
 let dbInstance: IDBDatabase | null = null;
 
@@ -24,56 +27,46 @@ const getDb = (): Promise<IDBDatabase> => {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      // Create session store if it doesn't exist
+      if (!db.objectStoreNames.contains(SESSION_STORE_NAME)) {
+        db.createObjectStore(SESSION_STORE_NAME, { keyPath: 'id' });
+      }
+      // Create history store if it doesn't exist
+      if (!db.objectStoreNames.contains(HISTORY_STORE_NAME)) {
+        db.createObjectStore(HISTORY_STORE_NAME, { keyPath: 'id' });
+      }
+      // Clean up old store from version 1
+      if (db.objectStoreNames.contains('images')) {
+          db.deleteObjectStore('images');
       }
     };
   });
 };
 
-export const saveData = async <T>(id: string, data: T): Promise<void> => {
-  const db = await getDb();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.put({ id, data });
+const makeRequest = <T>(storeName: string, mode: IDBTransactionMode, action: (store: IDBObjectStore) => IDBRequest | IDBRequest<IDBValidKey[]>): Promise<T> => {
+    return new Promise(async (resolve, reject) => {
+        const db = await getDb();
+        const transaction = db.transaction(storeName, mode);
+        const store = transaction.objectStore(storeName);
+        const request = action(store);
 
-    request.onsuccess = () => resolve();
-    request.onerror = () => {
-      console.error("Error saving data to IndexedDB:", request.error);
-      reject(request.error);
-    };
-  });
-};
-
-export const loadData = async <T>(id: string): Promise<T | undefined> => {
-  const db = await getDb();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.get(id);
-
-    request.onsuccess = () => {
-      resolve(request.result ? request.result.data : undefined);
-    };
-    request.onerror = () => {
-      console.error("Error loading data from IndexedDB:", request.error);
-      reject(request.error);
-    };
-  });
-};
-    
-export const clearDB = async (): Promise<void> => {
-    const db = await getDb();
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction(STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.clear();
-
-        request.onsuccess = () => resolve();
+        request.onsuccess = () => resolve(request.result as T);
         request.onerror = () => {
-            console.error("Error clearing IndexedDB:", request.error);
+            console.error(`Error performing action on ${storeName}:`, request.error);
             reject(request.error);
-        };
+        }
     });
 }
+
+// Session Management
+export const saveSession = (data: any): Promise<any> => makeRequest(SESSION_STORE_NAME, 'readwrite', store => store.put({ id: 'currentSession', data }));
+export const loadSession = async (): Promise<any | undefined> => {
+    const result = await makeRequest<any>(SESSION_STORE_NAME, 'readonly', store => store.get('currentSession'));
+    return result ? result.data : undefined;
+};
+export const clearSession = (): Promise<any> => makeRequest(SESSION_STORE_NAME, 'readwrite', store => store.clear());
+
+// History Management
+export const saveHistoryItem = (item: HistoryItem): Promise<any> => makeRequest(HISTORY_STORE_NAME, 'readwrite', store => store.put(item));
+export const loadAllHistoryItems = (): Promise<HistoryItem[]> => makeRequest<HistoryItem[]>(HISTORY_STORE_NAME, 'readonly', store => store.getAll()).then(items => items.sort((a, b) => b.id.localeCompare(a.id)));
+export const clearHistory = (): Promise<any> => makeRequest(HISTORY_STORE_NAME, 'readwrite', store => store.clear());

@@ -10,11 +10,7 @@ import { PersonSelector } from './components/PersonSelector';
 import { ImageEditor } from './components/ImageEditor';
 import { History } from './components/History';
 import { Settings } from './components/Settings';
-import { saveData, loadData, clearDB } from './utils/db';
-
-
-const SESSION_STATE_KEY = 'virtualTryOnState';
-const HISTORY_KEY = 'generationHistory';
+import { saveSession, loadSession, saveHistoryItem, loadAllHistoryItems, clearHistory, clearSession } from './utils/db';
 
 
 const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
@@ -54,8 +50,10 @@ const App: React.FC = () => {
     useEffect(() => {
         const loadInitialData = async () => {
             setIsApiKeySet(isApiKeyAvailable());
-            const savedState = await loadData<any>(SESSION_STATE_KEY);
-            const savedHistory = await loadData<HistoryItem[]>(HISTORY_KEY);
+            const [savedState, savedHistory] = await Promise.all([
+                loadSession(),
+                loadAllHistoryItems()
+            ]);
             
             if (savedHistory) {
                 setHistory(savedHistory);
@@ -76,7 +74,7 @@ const App: React.FC = () => {
                     setShowRestoreNotification(true);
                 } catch (e) {
                     console.error("Failed to parse saved state", e);
-                    await clearDB();
+                    await Promise.all([clearSession(), clearHistory()]);
                 }
             }
         };
@@ -92,13 +90,14 @@ const App: React.FC = () => {
             AppState.GARMENT_SELECTED,
         ];
 
+        // History is saved separately, so we exclude it from the main session state object.
         const stateToSave = {
             appState, targetImage, sourceImage,
             detectedPeople, selectedPerson, sourceGarmentBox, language, appSettings
         };
 
         if (savableStates.includes(appState)) {
-           saveData(SESSION_STATE_KEY, stateToSave).catch(e => console.error("Failed to save session state", e));
+           saveSession(stateToSave).catch(e => console.error("Failed to save session state", e));
         }
     }, [appState, targetImage, sourceImage, detectedPeople, selectedPerson, sourceGarmentBox, language, appSettings]);
 
@@ -113,7 +112,8 @@ const App: React.FC = () => {
         setError(null);
         setLoadingMessage('');
         setImageUrl('');
-        await clearDB();
+        setHistory([]); // Clear history from react state
+        await Promise.all([clearSession(), clearHistory()]);
     }, []);
 
     const handleImageFile = async (file: File, imageSetter: (b64: string) => void, nextState: AppState) => {
@@ -281,9 +281,11 @@ const App: React.FC = () => {
                     );
                     setGeneratedImage(resultImage);
                     const newHistoryItem: HistoryItem = { id: new Date().toISOString(), generatedImage: resultImage };
-                    const updatedHistory = [newHistoryItem, ...history];
-                    setHistory(updatedHistory);
-                    await saveData(HISTORY_KEY, updatedHistory);
+                    
+                    // Save the new item individually and update local state
+                    await saveHistoryItem(newHistoryItem);
+                    setHistory(prev => [newHistoryItem, ...prev]);
+
                     setAppState(AppState.RESULT_READY);
                 } catch (err) {
                     const errorMessageKey = err instanceof Error ? err.message : 'generationFailedError';
@@ -296,11 +298,11 @@ const App: React.FC = () => {
             }
         };
         performVirtualTryOn();
-    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t, history, appSettings.generationModel]);
+    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t, appSettings.generationModel]);
 
     const handleClearHistory = async () => {
         setHistory([]);
-        await saveData(HISTORY_KEY, []);
+        await clearHistory();
     };
     
     const toggleLanguage = () => {
@@ -309,7 +311,6 @@ const App: React.FC = () => {
 
     const handleSaveSettings = (settings: AppSettings) => {
         setAppSettings(settings);
-        // The main useEffect hook will handle saving this to IndexedDB
     };
 
     const renderContent = () => {
