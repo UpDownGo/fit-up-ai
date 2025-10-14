@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppState, BoundingBox, DetectedPerson, HistoryItem } from './types';
+import { AppState, BoundingBox, DetectedPerson, HistoryItem, AppSettings } from './types';
 import { useLocalization } from './context/LocalizationContext';
 import { detectPeopleInImage, generateVirtualTryOnImage } from './services/geminiService';
 import { blobToBase64, urlToBase64 } from './utils/fileUtils';
@@ -9,8 +9,10 @@ import { ImageUploader } from './components/ImageUploader';
 import { PersonSelector } from './components/PersonSelector';
 import { ImageEditor } from './components/ImageEditor';
 import { History } from './components/History';
+import { Settings } from './components/Settings';
 
 const LOCAL_STORAGE_KEY = 'virtualTryOnState';
+const SETTINGS_STORAGE_KEY = 'virtualTryOnSettings';
 
 const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
     <div className="flex flex-col items-center justify-center text-center p-8">
@@ -37,11 +39,25 @@ const App: React.FC = () => {
     const [isFetchingUrl, setIsFetchingUrl] = useState(false);
     const [isPasting, setIsPasting] = useState(false);
     const [showRestoreNotification, setShowRestoreNotification] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [settings, setSettings] = useState<AppSettings>({
+        detectionModel: 'gemini-2.5-flash',
+        generationModel: 'gemini-2.5-flash-image',
+    });
     
     const { t, language, setLanguage } = useLocalization();
     
-    // Load state from localStorage on initial mount
     useEffect(() => {
+        const savedSettingsJSON = localStorage.getItem(SETTINGS_STORAGE_KEY);
+        if (savedSettingsJSON) {
+            try {
+                const savedSettings = JSON.parse(savedSettingsJSON);
+                setSettings(savedSettings);
+            } catch (e) {
+                console.error("Failed to parse settings from localStorage", e);
+            }
+        }
+
         const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (savedStateJSON) {
             try {
@@ -62,9 +78,8 @@ const App: React.FC = () => {
                 localStorage.removeItem(LOCAL_STORAGE_KEY);
             }
         }
-    }, []); // Empty array ensures this runs only once on mount
+    }, []);
 
-    // Save state to localStorage on change
     useEffect(() => {
         const savableStates = [
             AppState.TARGET_PERSON_CHOOSING,
@@ -76,14 +91,8 @@ const App: React.FC = () => {
 
         if (savableStates.includes(appState)) {
             const stateToSave = {
-                appState,
-                targetImage,
-                sourceImage,
-                detectedPeople,
-                selectedPerson,
-                sourceGarmentBox,
-                language,
-                history,
+                appState, targetImage, sourceImage, detectedPeople,
+                selectedPerson, sourceGarmentBox, language, history,
             };
             try {
                 localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
@@ -93,6 +102,14 @@ const App: React.FC = () => {
         }
     }, [appState, targetImage, sourceImage, detectedPeople, selectedPerson, sourceGarmentBox, language, history]);
 
+    const handleSaveSettings = (newSettings: AppSettings) => {
+        setSettings(newSettings);
+        try {
+            localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
+        } catch (e) {
+            console.error("Failed to save settings to localStorage", e);
+        }
+    };
 
     const handleReset = useCallback(() => {
         setAppState(AppState.IDLE);
@@ -110,7 +127,7 @@ const App: React.FC = () => {
 
     const handleImageFile = async (file: File, imageSetter: (b64: string) => void, nextState: AppState) => {
         setLoadingMessage(t('analyzingImageQuality'));
-        setAppState(AppState.GENERATING); // Use a generic loading state
+        setAppState(AppState.GENERATING);
         setError(null);
 
         try {
@@ -231,7 +248,7 @@ const App: React.FC = () => {
             if (appState === AppState.ANALYZING_TARGET_IMAGE && targetImage) {
                 setLoadingMessage(t('detectingPeople'));
                 try {
-                    const people = await detectPeopleInImage(targetImage);
+                    const people = await detectPeopleInImage(targetImage, settings.detectionModel);
                     if (people.length > 0) {
                         setDetectedPeople(people);
                         setAppState(AppState.TARGET_PERSON_CHOOSING);
@@ -248,7 +265,7 @@ const App: React.FC = () => {
             }
         };
         analyzeTargetImage();
-    }, [appState, targetImage, t]);
+    }, [appState, targetImage, t, settings.detectionModel]);
 
     useEffect(() => {
         const performVirtualTryOn = async () => {
@@ -262,7 +279,8 @@ const App: React.FC = () => {
                         selectedPerson.box,
                         sourceImage,
                         sourceGarmentBox,
-                        language
+                        language,
+                        settings.generationModel
                     );
                     setGeneratedImage(resultImage);
                     const newHistoryItem: HistoryItem = { id: new Date().toISOString(), generatedImage: resultImage };
@@ -277,7 +295,7 @@ const App: React.FC = () => {
             }
         };
         performVirtualTryOn();
-    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t]);
+    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t, settings.generationModel]);
 
     const handleClearHistory = () => {
         setHistory([]);
@@ -405,6 +423,7 @@ const App: React.FC = () => {
 
     return (
         <div className="bg-gray-900 text-white min-h-screen font-sans">
+            <Settings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onSave={handleSaveSettings} currentSettings={settings} />
             {showRestoreNotification && (
                 <div className="bg-indigo-600 text-center py-2 px-4 relative">
                     <p className="text-sm font-semibold">{t('sessionRestoredNotification')}</p>
@@ -422,7 +441,7 @@ const App: React.FC = () => {
             <header className="py-6 px-4 md:px-8 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10 border-b border-gray-700">
                 <div className="max-w-7xl mx-auto flex justify-between items-center">
                     <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500">{t('appTitle')}</h1>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
                         <button onClick={toggleLanguage} className="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors">
                             {language === 'en' ? '한국어' : 'English'}
                         </button>
@@ -431,6 +450,12 @@ const App: React.FC = () => {
                                 {t('startOverButton')}
                             </button>
                         )}
+                         <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors" aria-label="Settings">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0l-.1.41a1.52 1.52 0 01-1.34 1.34l-.41.1c-1.56.38-1.56 2.6 0 2.98l.41.1a1.52 1.52 0 011.34 1.34l.1.41c.38 1.56 2.6 1.56 2.98 0l.1-.41a1.52 1.52 0 011.34-1.34l.41-.1c1.56-.38 1.56-2.6 0-2.98l-.41-.1a1.52 1.52 0 01-1.34-1.34l-.1-.41zM10 8a2 2 0 100 4 2 2 0 000-4z" clipRule="evenodd" />
+                                <path d="M15.73 4.27a1 1 0 01.27.27l.27.27a1 1 0 010 1.41l-1.5 1.5a1 1 0 01-1.41 0l-.27-.27a1 1 0 010-1.41l1.5-1.5a1 1 0 011.14 0zM4.27 15.73a1 1 0 01.27.27l.27.27a1 1 0 010 1.41l-1.5 1.5a1 1 0 01-1.41 0l-.27-.27a1 1 0 010-1.41l1.5-1.5a1 1 0 011.14 0zM4.27 4.27a1 1 0 011.41 0l1.5 1.5a1 1 0 010 1.41l-.27.27a1 1 0 01-1.41 0l-1.5-1.5a1 1 0 010-1.41l.27-.27zM15.73 15.73a1 1 0 011.41 0l1.5 1.5a1 1 0 010 1.41l-.27.27a1 1 0 01-1.41 0l-1.5-1.5a1 1 0 010-1.41l.27-.27z" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </header>

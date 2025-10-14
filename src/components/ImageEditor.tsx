@@ -176,7 +176,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
 
   // --- Mobile Touch Handlers ---
   const getDragState = (pos: { x: number, y: number }, b: BoundingBox): DragState => {
-      const isNear = (p1: number, p2: number) => Math.abs(p1 - p2) < HANDLE_SIZE;
+      const isNear = (p1: number, p2: number) => Math.abs(p1 - p2) < HANDLE_SIZE * 1.5; // Increased touch area
       if (isNear(pos.x, b.x) && isNear(pos.y, b.y)) return 'resize-tl';
       if (isNear(pos.x, b.x + b.width) && isNear(pos.y, b.y)) return 'resize-tr';
       if (isNear(pos.x, b.x) && isNear(pos.y, b.y + b.height)) return 'resize-bl';
@@ -189,39 +189,52 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
       const pos = getCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
       const currentDragState = getDragState(pos, adjustableBox);
       if (currentDragState) {
+          e.preventDefault();
           setDragState(currentDragState);
           setTouchStart(pos);
       }
   };
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
       if (!dragState || !touchStart || !adjustableBox) return;
+      e.preventDefault();
       const pos = getCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
       const dx = pos.x - touchStart.x;
       const dy = pos.y - touchStart.y;
       
-      let newBox = { ...adjustableBox };
+      let { x, y, width, height } = adjustableBox;
       switch (dragState) {
           case 'move':
-              newBox.x += dx; newBox.y += dy;
+              x += dx; y += dy;
               break;
           case 'resize-tl':
-              newBox.x += dx; newBox.y += dy; newBox.width -= dx; newBox.height -= dy;
+              x += dx; y += dy; width -= dx; height -= dy;
               break;
           case 'resize-tr':
-              newBox.width += dx; newBox.y += dy; newBox.height -= dy;
+              width += dx; y += dy; height -= dy;
               break;
           case 'resize-bl':
-              newBox.x += dx; newBox.width -= dx; newBox.height += dy;
+              x += dx; width -= dx; height += dy;
               break;
           case 'resize-br':
-              newBox.width += dx; newBox.height += dy;
+              width += dx; height += dy;
               break;
       }
+      
+      // Normalize box if width/height went negative (corner dragged over opposite side)
+      if (width < 0) {
+          x = x + width;
+          width = Math.abs(width);
+      }
+      if (height < 0) {
+          y = y + height;
+          height = Math.abs(height);
+      }
 
-      setAdjustableBox(newBox);
+      setAdjustableBox({ x, y, width, height });
       setTouchStart(pos);
   };
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
       setDragState(null);
       setTouchStart(null);
   };
