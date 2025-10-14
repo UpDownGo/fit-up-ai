@@ -73,7 +73,7 @@ const getMimeType = (base64: string) => {
     return base64.substring(base64.indexOf(":") + 1, base64.indexOf(";"));
 }
 
-export const detectPeopleInImage = async (imageBase64: string): Promise<DetectedPerson[]> => {
+export const detectPeopleInImage = async (imageBase64: string, model: string): Promise<DetectedPerson[]> => {
     if (!isApiKeyAvailable()) throw new Error("errorApiKeyMissing");
     
     try {
@@ -87,7 +87,7 @@ export const detectPeopleInImage = async (imageBase64: string): Promise<Detected
         const prompt = "Analyze the provided image and identify all individuals. For each person found, provide their bounding box coordinates (x, y, width, height) normalized to the range [0, 1]. Also assign a unique ID like 'Person 1', 'Person 2', etc. Return this information in a JSON object.";
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model,
             contents: { parts: [imagePart, { text: prompt }] },
             config: {
                 responseMimeType: "application/json",
@@ -180,6 +180,7 @@ export const generateVirtualTryOnImage = async (
   sourceImageBase64: string,
   sourceGarmentBox: BoundingBox,
   language: Language,
+  model: string
 ): Promise<string> => {
   if (!isApiKeyAvailable()) throw new Error("errorApiKeyMissing");
   
@@ -206,7 +207,7 @@ export const generateVirtualTryOnImage = async (
         : [targetImagePart, sourceImagePart, { text: prompt }];
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image', // Hardcoded correct model
+        model,
         contents: { parts },
         config: {
           responseModalities: [Modality.IMAGE],

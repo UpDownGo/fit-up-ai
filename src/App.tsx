@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppState, BoundingBox, DetectedPerson, HistoryItem } from './types';
+import { AppState, BoundingBox, DetectedPerson, HistoryItem, AppSettings } from './types';
 import { useLocalization } from './context/LocalizationContext';
 import { detectPeopleInImage, generateVirtualTryOnImage, isApiKeyAvailable } from './services/geminiService';
 import { blobToBase64, urlToBase64 } from './utils/fileUtils';
@@ -9,6 +9,7 @@ import { ImageUploader } from './components/ImageUploader';
 import { PersonSelector } from './components/PersonSelector';
 import { ImageEditor } from './components/ImageEditor';
 import { History } from './components/History';
+import { Settings } from './components/Settings';
 import { saveData, loadData, clearDB } from './utils/db';
 
 
@@ -42,6 +43,11 @@ const App: React.FC = () => {
     const [isPasting, setIsPasting] = useState(false);
     const [showRestoreNotification, setShowRestoreNotification] = useState(false);
     const [isApiKeySet, setIsApiKeySet] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [appSettings, setAppSettings] = useState<AppSettings>({
+      detectionModel: 'gemini-2.5-flash',
+      generationModel: 'gemini-2.5-flash-image',
+    });
     
     const { t, language, setLanguage } = useLocalization();
     
@@ -64,6 +70,9 @@ const App: React.FC = () => {
                     setSelectedPerson(savedState.selectedPerson || null);
                     setSourceGarmentBox(savedState.sourceGarmentBox || null);
                     setLanguage(savedState.language || 'ko');
+                    if (savedState.appSettings) {
+                        setAppSettings(savedState.appSettings);
+                    }
                     setShowRestoreNotification(true);
                 } catch (e) {
                     console.error("Failed to parse saved state", e);
@@ -85,13 +94,13 @@ const App: React.FC = () => {
 
         const stateToSave = {
             appState, targetImage, sourceImage,
-            detectedPeople, selectedPerson, sourceGarmentBox, language,
+            detectedPeople, selectedPerson, sourceGarmentBox, language, appSettings
         };
 
         if (savableStates.includes(appState)) {
            saveData(SESSION_STATE_KEY, stateToSave).catch(e => console.error("Failed to save session state", e));
         }
-    }, [appState, targetImage, sourceImage, detectedPeople, selectedPerson, sourceGarmentBox, language]);
+    }, [appState, targetImage, sourceImage, detectedPeople, selectedPerson, sourceGarmentBox, language, appSettings]);
 
     const handleReset = useCallback(async () => {
         setAppState(AppState.IDLE);
@@ -235,7 +244,7 @@ const App: React.FC = () => {
             if (appState === AppState.ANALYZING_TARGET_IMAGE && targetImage) {
                 setLoadingMessage(t('detectingPeople'));
                 try {
-                    const people = await detectPeopleInImage(targetImage);
+                    const people = await detectPeopleInImage(targetImage, appSettings.detectionModel);
                     if (people.length > 0) {
                         setDetectedPeople(people);
                         setAppState(AppState.TARGET_PERSON_CHOOSING);
@@ -253,7 +262,7 @@ const App: React.FC = () => {
             }
         };
         analyzeTargetImage();
-    }, [appState, targetImage, t]);
+    }, [appState, targetImage, t, appSettings.detectionModel]);
 
     useEffect(() => {
         const performVirtualTryOn = async () => {
@@ -267,7 +276,8 @@ const App: React.FC = () => {
                         selectedPerson.box,
                         sourceImage,
                         sourceGarmentBox,
-                        language
+                        language,
+                        appSettings.generationModel
                     );
                     setGeneratedImage(resultImage);
                     const newHistoryItem: HistoryItem = { id: new Date().toISOString(), generatedImage: resultImage };
@@ -286,7 +296,7 @@ const App: React.FC = () => {
             }
         };
         performVirtualTryOn();
-    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t, history]);
+    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t, history, appSettings.generationModel]);
 
     const handleClearHistory = async () => {
         setHistory([]);
@@ -295,6 +305,11 @@ const App: React.FC = () => {
     
     const toggleLanguage = () => {
         setLanguage(language === 'en' ? 'ko' : 'en');
+    };
+
+    const handleSaveSettings = (settings: AppSettings) => {
+        setAppSettings(settings);
+        // The main useEffect hook will handle saving this to IndexedDB
     };
 
     const renderContent = () => {
@@ -435,6 +450,11 @@ const App: React.FC = () => {
                         <button onClick={toggleLanguage} className="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors">
                             {language === 'en' ? '한국어' : 'English'}
                         </button>
+                        <button onClick={() => setIsSettingsOpen(true)} className="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors" aria-label={t('settingsButton')}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0L8 5.45c-.5.19-1 .44-1.44.73l-2.07-.83c-1.5-.6-3.13.53-2.73 2.05l.79 2.89c.26.96.03 2.02-.63 2.74l-1.93 2.1c-1.22 1.33-.2 3.44 1.63 3.44h.01c.99 0 1.93-.31 2.68-.87l2.18-1.63c.51-.38 1.1-.63 1.72-.75l.48 2.22c.38 1.56 2.6 1.56 2.98 0l.48-2.22c.62.12 1.21.37 1.72.75l2.18 1.63c.75.56 1.69.87 2.68.87h.01c1.83 0 2.85-2.11 1.63-3.44l-1.93-2.1c-.66-.72-.89-1.78-.63-2.74l.79-2.89c.4-1.52-1.23-2.65-2.73-2.05l-2.07.83c-.44-.29-.94-.54-1.44-.73L11.49 3.17zm-1.49 8.33a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" clipRule="evenodd" />
+                            </svg>
+                        </button>
                         {appState !== AppState.IDLE && (
                             <button onClick={handleReset} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold text-sm transition-colors duration-300">
                                 {t('startOverButton')}
@@ -464,6 +484,13 @@ const App: React.FC = () => {
                     {isApiKeySet ? t('apiKeyConnected') : t('apiKeyMissing')}
                  </p>
             </footer>
+
+            <Settings
+                isOpen={isSettingsOpen}
+                onClose={() => setIsSettingsOpen(false)}
+                onSave={handleSaveSettings}
+                currentSettings={appSettings}
+            />
         </div>
     );
 };

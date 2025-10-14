@@ -60,5 +60,10 @@
   "errorSafetyBlock": "The image could not be processed due to content safety policies. This can sometimes occur with images of people. Please try a different image.",
   "errorGenerationNoImage": "The AI model did not return an image. This may be a temporary issue, please try again.",
   "errorApiKeyMissing": "Your Gemini API Key is missing. The app cannot function without it. Please ensure it is configured correctly.",
-  "errorGenericApi": "An unexpected API error occurred. Please check your network connection and try again."
+  "errorGenericApi": "An unexpected API error occurred. Please check your network connection and try again.",
+  "settingsButton": "Settings",
+  "settingsTitle": "Model Settings",
+  "detectionModelLabel": "Person Detection Model",
+  "generationModelLabel": "Image Generation Model",
+  "saveSettingsButton": "Save"
 }
