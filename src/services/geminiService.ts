@@ -1,12 +1,13 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BoundingBox, DetectedPerson, Language } from '../types';
 
-// FIX: Use process.env.API_KEY as per the guidelines. This also resolves the TypeScript error.
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable is not set");
+const apiKey = import.meta.env.VITE_API_KEY;
+
+if (!apiKey) {
+  throw new Error("VITE_API_KEY environment variable is not set");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey });
 
 const getMimeType = (base64: string) => {
     return base64.substring(base64.indexOf(":") + 1, base64.indexOf(";"));
