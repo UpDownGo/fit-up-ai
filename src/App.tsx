@@ -244,7 +244,8 @@ const App: React.FC = () => {
                         setAppState(AppState.ERROR);
                     }
                 } catch (err) {
-                    setError(t('detectionFailedError') + (err instanceof Error ? `: ${err.message}`: ''));
+                    const errorMessageKey = err instanceof Error ? err.message : 'detectionFailedError';
+                    setError(t(errorMessageKey));
                     setAppState(AppState.ERROR);
                 } finally {
                     setLoadingMessage('');
@@ -275,10 +276,9 @@ const App: React.FC = () => {
                     await saveData(HISTORY_KEY, updatedHistory);
                     setAppState(AppState.RESULT_READY);
                 } catch (err) {
-                    const detailedError = err instanceof Error ? err.message : String(err);
+                    const errorMessageKey = err instanceof Error ? err.message : 'generationFailedError';
                     console.error("Virtual try-on failed:", err);
-                    const finalErrorMessage = `${t('generationFailedError')} [${detailedError}]`;
-                    setError(finalErrorMessage);
+                    setError(t(errorMessageKey));
                     setAppState(AppState.ERROR);
                 } finally {
                     setLoadingMessage('');

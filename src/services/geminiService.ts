@@ -20,12 +20,61 @@ export const isApiKeyAvailable = (): boolean => {
     return !!process.env.API_KEY;
 };
 
+/**
+ * Parses a caught error to determine a user-friendly error message key.
+ * @param e The error object.
+ * @returns A string key for the localization files.
+ */
+const parseGeminiError = (e: unknown): string => {
+  if (e instanceof Error) {
+    // Handle specific keys we throw internally first
+    const internalKeys = ['errorApiKeyMissing', 'errorSafetyBlock', 'errorGenerationNoImage'];
+    if (internalKeys.includes(e.message)) {
+      return e.message;
+    }
+
+    try {
+      // API errors often have a message that is a JSON string.
+      // We parse it to get detailed error info.
+      let errorBody;
+      const message = e.message.trim();
+      if (message.startsWith('[')) {
+        errorBody = JSON.parse(message)[0];
+      } else if (message.startsWith('{')) {
+        errorBody = JSON.parse(message);
+      }
+
+      if (errorBody && errorBody.error) {
+        const { status, message: apiMessage } = errorBody.error;
+        if (status === 'RESOURCE_EXHAUSTED' || (apiMessage && apiMessage.includes('quota'))) {
+          return 'errorQuotaExceeded';
+        }
+        if (apiMessage && apiMessage.includes('API key not valid')) {
+          return 'errorInvalidApiKey';
+        }
+      }
+    } catch (parseError) {
+      // Not a JSON message, fall through to simple string checks
+    }
+
+    // Simple string checks for non-JSON messages
+    if (e.message.includes('API key not valid')) {
+      return 'errorInvalidApiKey';
+    }
+  }
+
+  // Fallback for unknown errors
+  console.error("Unknown API Error:", e);
+  return 'errorGenericApi';
+};
+
+
 const getMimeType = (base64: string) => {
     return base64.substring(base64.indexOf(":") + 1, base64.indexOf(";"));
 }
 
 export const detectPeopleInImage = async (imageBase64: string): Promise<DetectedPerson[]> => {
-    if (!isApiKeyAvailable()) throw new Error("API Key is missing.");
+    if (!isApiKeyAvailable()) throw new Error("errorApiKeyMissing");
     
     try {
         const imagePart = {
@@ -79,8 +128,7 @@ export const detectPeopleInImage = async (imageBase64: string): Promise<Detected
         return [];
     } catch (e) {
         console.error("Failed during person detection API call:", e);
-        const detailedError = (e as any)?.message || "Could not detect people in the image.";
-        throw new Error(detailedError);
+        throw new Error(parseGeminiError(e));
     }
 };
 
@@ -133,7 +181,7 @@ export const generateVirtualTryOnImage = async (
   sourceGarmentBox: BoundingBox,
   language: Language,
 ): Promise<string> => {
-  if (!isApiKeyAvailable()) throw new Error("API Key is missing.");
+  if (!isApiKeyAvailable()) throw new Error("errorApiKeyMissing");
   
   try {
       const isSameImage = targetImageBase64 === sourceImageBase64;
@@ -161,7 +209,6 @@ export const generateVirtualTryOnImage = async (
         model: 'gemini-2.5-flash-image', // Hardcoded correct model
         contents: { parts },
         config: {
-          // FIX: responseModalities must be an array with a single `Modality.IMAGE` element when generating images.
           responseModalities: [Modality.IMAGE],
         },
       });
@@ -175,23 +222,16 @@ export const generateVirtualTryOnImage = async (
         const mimeType = imagePart.inlineData.mimeType;
         return `data:${mimeType};base64,${base64ImageBytes}`;
       } else {
-        console.error("Full Gemini Response for debugging:", JSON.stringify(response, null, 2));
         const blockReason = response.candidates?.[0]?.finishReason;
-        const safetyRatings = response.candidates?.[0]?.safetyRatings;
-        const responseText = response.text || "No text found.";
-        
-        let detailedReason = `The model returned text instead of an image: "${responseText}"`;
         if (blockReason === 'SAFETY') {
-            detailedReason = `Request was blocked for safety reasons. Ratings: ${JSON.stringify(safetyRatings)}`;
-        } else if (blockReason && blockReason !== 'STOP') {
-            detailedReason = `Generation finished unexpectedly. Reason: ${blockReason}.`;
+            throw new Error('errorSafetyBlock');
         }
-
-        throw new Error(`No image was generated. ${detailedReason}`);
+        
+        console.error("Full Gemini Response for debugging:", JSON.stringify(response, null, 2));
+        throw new Error('errorGenerationNoImage');
       }
     } catch(e) {
         console.error("Failed during image generation API call:", e);
-        const detailedError = (e as any)?.message || "Could not generate image.";
-        throw new Error(detailedError);
+        throw new Error(parseGeminiError(e));
     }
 };
