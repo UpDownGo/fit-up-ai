@@ -32,6 +32,8 @@
   "qualityErrorBlurry": "The image appears to be blurry",
   "qualityErrorSuggestion": "Please use a clear, well-lit, high-resolution photo.",
   "step5Instruction": "Draw a box around the clothing item.",
+  "step5InstructionMobile": "Adjust the box to fit the garment.",
+  "confirmSelectionButton": "Confirm Selection",
   "generateButton": "Generate Image",
   "generatingText": "Generating your virtual try-on... This may take a moment.",
   "generationFailed": "The virtual try-on could not be generated.",
@@ -51,9 +53,8 @@
   "footerText": "Powered by Gemini",
   "sessionRestoredNotification": "Your previous session has been restored.",
   "closeButton": "Close",
-  "settingsTitle": "Model Settings",
+  "settingsTitle": "Settings",
   "detectionModelLabel": "Person Detection Model",
   "generationModelLabel": "Image Generation Model",
-  "saveSettingsButton": "Save",
-  "settingsButton": "Settings"
+  "saveSettingsButton": "Save Settings"
 }

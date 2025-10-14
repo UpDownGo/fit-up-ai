@@ -1,19 +1,21 @@
+
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BoundingBox, DetectedPerson, Language } from '../types';
 
-const apiKey = import.meta.env.VITE_API_KEY;
-
-if (!apiKey) {
-  throw new Error("VITE_API_KEY environment variable is not set");
+// fix: Use process.env.API_KEY for Gemini API initialization as per guidelines.
+if (!process.env.API_KEY) {
+  throw new Error("API_KEY environment variable is not set");
 }
 
-const ai = new GoogleGenAI({ apiKey });
+// fix: Initialize GoogleGenAI with a named apiKey parameter from process.env.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const getMimeType = (base64: string) => {
     return base64.substring(base64.indexOf(":") + 1, base64.indexOf(";"));
 }
 
-export const detectPeopleInImage = async (imageBase64: string, modelName: string): Promise<DetectedPerson[]> => {
+// fix: Remove modelName parameter and hardcode the model to 'gemini-2.5-flash' for this task.
+export const detectPeopleInImage = async (imageBase64: string): Promise<DetectedPerson[]> => {
     const imagePart = {
         inlineData: {
             mimeType: getMimeType(imageBase64),
@@ -24,7 +26,7 @@ export const detectPeopleInImage = async (imageBase64: string, modelName: string
     const prompt = "Analyze the provided image and identify all individuals. For each person found, provide their bounding box coordinates (x, y, width, height) normalized to the range [0, 1]. Also assign a unique ID like 'Person 1', 'Person 2', etc. Return this information in a JSON object.";
 
     const response = await ai.models.generateContent({
-        model: modelName,
+        model: 'gemini-2.5-flash',
         contents: { parts: [imagePart, { text: prompt }] },
         config: {
             responseMimeType: "application/json",
@@ -110,13 +112,13 @@ const buildVirtualTryOnPrompt = (targetPersonBox: BoundingBox, sourceGarmentBox:
     `;
 };
 
+// fix: Remove modelName parameter and hardcode the model to 'gemini-2.5-flash-image' for this task.
 export const generateVirtualTryOnImage = async (
   targetImageBase64: string,
   targetPersonBox: BoundingBox,
   sourceImageBase64: string,
   sourceGarmentBox: BoundingBox,
   language: Language,
-  modelName: string,
 ): Promise<string> => {
   const isSameImage = targetImageBase64 === sourceImageBase64;
   const prompt = buildVirtualTryOnPrompt(targetPersonBox, sourceGarmentBox, isSameImage, language);
@@ -137,12 +139,10 @@ export const generateVirtualTryOnImage = async (
 
   const parts = isSameImage 
     ? [targetImagePart, { text: prompt }]
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
     : [targetImagePart, sourceImagePart, { text: prompt }];
 
   const response = await ai.models.generateContent({
-    model: modelName,
+    model: 'gemini-2.5-flash-image',
     contents: { parts },
     config: {
       responseModalities: [Modality.IMAGE, Modality.TEXT],

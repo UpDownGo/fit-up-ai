@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppState, AppSettings, BoundingBox, DetectedPerson, HistoryItem } from './types';
+import { AppState, BoundingBox, DetectedPerson, HistoryItem } from './types';
 import { useLocalization } from './context/LocalizationContext';
 import { detectPeopleInImage, generateVirtualTryOnImage } from './services/geminiService';
 import { blobToBase64, urlToBase64 } from './utils/fileUtils';
@@ -9,10 +9,8 @@ import { ImageUploader } from './components/ImageUploader';
 import { PersonSelector } from './components/PersonSelector';
 import { ImageEditor } from './components/ImageEditor';
 import { History } from './components/History';
-import { Settings } from './components/Settings';
 
 const LOCAL_STORAGE_KEY = 'virtualTryOnState';
-const SETTINGS_STORAGE_KEY = 'virtualTryOnSettings';
 
 const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
     <div className="flex flex-col items-center justify-center text-center p-8">
@@ -39,14 +37,10 @@ const App: React.FC = () => {
     const [isFetchingUrl, setIsFetchingUrl] = useState(false);
     const [isPasting, setIsPasting] = useState(false);
     const [showRestoreNotification, setShowRestoreNotification] = useState(false);
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [settings, setSettings] = useState<AppSettings>({
-        detectionModel: 'gemini-2.5-flash',
-        generationModel: 'gemini-2.5-flash-image',
-    });
     
     const { t, language, setLanguage } = useLocalization();
     
+    // Load state from localStorage on initial mount
     useEffect(() => {
         const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (savedStateJSON) {
@@ -68,20 +62,9 @@ const App: React.FC = () => {
                 localStorage.removeItem(LOCAL_STORAGE_KEY);
             }
         }
+    }, []); // Empty array ensures this runs only once on mount
 
-        const savedSettingsJSON = localStorage.getItem(SETTINGS_STORAGE_KEY);
-        if (savedSettingsJSON) {
-            try {
-                const savedSettings = JSON.parse(savedSettingsJSON);
-                if (savedSettings) {
-                    setSettings(savedSettings);
-                }
-            } catch (e) {
-                console.error("Failed to parse settings from localStorage", e);
-            }
-        }
-    }, []);
-
+    // Save state to localStorage on change
     useEffect(() => {
         const savableStates = [
             AppState.TARGET_PERSON_CHOOSING,
@@ -124,11 +107,6 @@ const App: React.FC = () => {
         setImageUrl('');
         localStorage.removeItem(LOCAL_STORAGE_KEY);
     }, []);
-
-    const handleSaveSettings = (newSettings: AppSettings) => {
-        setSettings(newSettings);
-        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
-    };
 
     const handleImageFile = async (file: File, imageSetter: (b64: string) => void, nextState: AppState) => {
         setLoadingMessage(t('analyzingImageQuality'));
@@ -253,7 +231,7 @@ const App: React.FC = () => {
             if (appState === AppState.ANALYZING_TARGET_IMAGE && targetImage) {
                 setLoadingMessage(t('detectingPeople'));
                 try {
-                    const people = await detectPeopleInImage(targetImage, settings.detectionModel);
+                    const people = await detectPeopleInImage(targetImage);
                     if (people.length > 0) {
                         setDetectedPeople(people);
                         setAppState(AppState.TARGET_PERSON_CHOOSING);
@@ -270,7 +248,7 @@ const App: React.FC = () => {
             }
         };
         analyzeTargetImage();
-    }, [appState, targetImage, t, settings.detectionModel]);
+    }, [appState, targetImage, t]);
 
     useEffect(() => {
         const performVirtualTryOn = async () => {
@@ -284,8 +262,7 @@ const App: React.FC = () => {
                         selectedPerson.box,
                         sourceImage,
                         sourceGarmentBox,
-                        language,
-                        settings.generationModel
+                        language
                     );
                     setGeneratedImage(resultImage);
                     const newHistoryItem: HistoryItem = { id: new Date().toISOString(), generatedImage: resultImage };
@@ -300,7 +277,7 @@ const App: React.FC = () => {
             }
         };
         performVirtualTryOn();
-    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t, settings.generationModel]);
+    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t]);
 
     const handleClearHistory = () => {
         setHistory([]);
@@ -380,13 +357,14 @@ const App: React.FC = () => {
             case AppState.GARMENT_SELECTED:
                  if (!sourceImage) return null;
                  const isSameImage = targetImage === sourceImage;
+                 const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
                  return (
                     <div className="w-full max-w-2xl mx-auto flex flex-col items-center gap-6">
                         <ImageEditor 
                             imageSrc={sourceImage} 
                             onBoxDrawn={handleGarmentBoxDrawn} 
                             boxColor="rgba(34, 197, 94, 0.9)" 
-                            instruction={t('step5Instruction')} 
+                            instruction={isTouchDevice ? t('step5InstructionMobile') : t('step5Instruction')} 
                             existingBox={isSameImage ? selectedPerson?.box : null}
                             garmentBox={sourceGarmentBox}
                         />
@@ -427,12 +405,6 @@ const App: React.FC = () => {
 
     return (
         <div className="bg-gray-900 text-white min-h-screen font-sans">
-            <Settings
-                isOpen={isSettingsOpen}
-                onClose={() => setIsSettingsOpen(false)}
-                onSave={handleSaveSettings}
-                currentSettings={settings}
-            />
             {showRestoreNotification && (
                 <div className="bg-indigo-600 text-center py-2 px-4 relative">
                     <p className="text-sm font-semibold">{t('sessionRestoredNotification')}</p>
@@ -451,15 +423,6 @@ const App: React.FC = () => {
                 <div className="max-w-7xl mx-auto flex justify-between items-center">
                     <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500">{t('appTitle')}</h1>
                     <div className="flex items-center gap-4">
-                        <button
-                          onClick={() => setIsSettingsOpen(true)}
-                          className="p-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
-                          aria-label={t('settingsButton')}
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.532 1.532 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.532 1.532 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-                            </svg>
-                        </button>
                         <button onClick={toggleLanguage} className="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors">
                             {language === 'en' ? '한국어' : 'English'}
                         </button>
