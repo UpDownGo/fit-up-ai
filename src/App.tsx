@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppState, BoundingBox, DetectedPerson, HistoryItem } from './types';
 import { useLocalization } from './context/LocalizationContext';
-import { detectPeopleInImage, generateVirtualTryOnImage } from './services/geminiService';
+import { detectPeopleInImage, generateVirtualTryOnImage, isApiKeyAvailable } from './services/geminiService';
 import { blobToBase64, urlToBase64 } from './utils/fileUtils';
 import { checkImageQuality } from './utils/imageQuality';
 
@@ -41,11 +41,13 @@ const App: React.FC = () => {
     const [isFetchingUrl, setIsFetchingUrl] = useState(false);
     const [isPasting, setIsPasting] = useState(false);
     const [showRestoreNotification, setShowRestoreNotification] = useState(false);
+    const [isApiKeySet, setIsApiKeySet] = useState(false);
     
     const { t, language, setLanguage } = useLocalization();
     
     useEffect(() => {
         const loadInitialData = async () => {
+            setIsApiKeySet(isApiKeyAvailable());
             const savedState = await loadData<any>(SESSION_STATE_KEY);
             const savedHistory = await loadData<HistoryItem[]>(HISTORY_KEY);
             
@@ -458,6 +460,9 @@ const App: React.FC = () => {
             
             <footer className="text-center py-6 text-gray-500 text-sm border-t border-gray-800">
                  <p>{t('footerText')}</p>
+                 <p className={`text-xs mt-1 ${isApiKeySet ? 'text-green-400' : 'text-red-400'}`}>
+                    {isApiKeySet ? t('apiKeyConnected') : t('apiKeyMissing')}
+                 </p>
             </footer>
         </div>
     );

@@ -52,5 +52,7 @@
   "clearHistoryButton": "Clear History",
   "footerText": "Powered by Gemini",
   "sessionRestoredNotification": "Your previous session has been restored.",
-  "closeButton": "Close"
+  "closeButton": "Close",
+  "apiKeyConnected": "Gemini API Key Connected",
+  "apiKeyMissing": "Gemini API Key is missing. The app may not function correctly."
 }
