@@ -1,21 +1,17 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppState, BoundingBox, DetectedPerson, HistoryItem, AppSettings } from './types';
+import { AppState, BoundingBox, DetectedPerson, HistoryItem } from './types';
 import { useLocalization } from './context/LocalizationContext';
-import { detectPeopleInImage, generateVirtualTryOnImage, isApiKeyAvailable } from './services/geminiService';
+import { detectPeopleInImage, generateVirtualTryOnImage } from './services/geminiService';
 import { blobToBase64, urlToBase64 } from './utils/fileUtils';
 import { checkImageQuality } from './utils/imageQuality';
-import { saveData, loadData, clearDB } from './utils/db';
 
 import { ImageUploader } from './components/ImageUploader';
 import { PersonSelector } from './components/PersonSelector';
 import { ImageEditor } from './components/ImageEditor';
 import { History } from './components/History';
-import { Settings } from './components/Settings';
 
 const LOCAL_STORAGE_KEY = 'virtualTryOnState';
-const SETTINGS_STORAGE_KEY = 'virtualTryOnSettings';
-const MAX_FILE_SIZE_MB = 5;
-const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
     <div className="flex flex-col items-center justify-center text-center p-8">
@@ -42,71 +38,34 @@ const App: React.FC = () => {
     const [isFetchingUrl, setIsFetchingUrl] = useState(false);
     const [isPasting, setIsPasting] = useState(false);
     const [showRestoreNotification, setShowRestoreNotification] = useState(false);
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [settings, setSettings] = useState<AppSettings>({
-        detectionModel: 'gemini-2.5-flash',
-        generationModel: 'gemini-2.5-flash-image',
-    });
-    const [isApiKeyOk, setIsApiKeyOk] = useState(false);
     
     const { t, language, setLanguage } = useLocalization();
     
+    // Load state from localStorage on initial mount
     useEffect(() => {
-        setIsApiKeyOk(isApiKeyAvailable());
-        
-        const loadStateFromStorage = async () => {
-            const savedSettingsJSON = localStorage.getItem(SETTINGS_STORAGE_KEY);
-            if (savedSettingsJSON) {
-                try {
-                    const savedSettings = JSON.parse(savedSettingsJSON);
-                    setSettings(savedSettings);
-                } catch (e) {
-                    console.error("Failed to parse settings from localStorage", e);
+        const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (savedStateJSON) {
+            try {
+                const savedState = JSON.parse(savedStateJSON);
+                if (savedState && savedState.appState) {
+                    setAppState(savedState.appState);
+                    setTargetImage(savedState.targetImage || null);
+                    setSourceImage(savedState.sourceImage || null);
+                    setDetectedPeople(savedState.detectedPeople || []);
+                    setSelectedPerson(savedState.selectedPerson || null);
+                    setSourceGarmentBox(savedState.sourceGarmentBox || null);
+                    setLanguage(savedState.language || 'ko');
+                    setHistory(savedState.history || []);
+                    setShowRestoreNotification(true);
                 }
+            } catch (e) {
+                console.error("Failed to parse saved state from localStorage", e);
+                localStorage.removeItem(LOCAL_STORAGE_KEY);
             }
+        }
+    }, []); // Empty array ensures this runs only once on mount
 
-            const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
-            if (savedStateJSON) {
-                try {
-                    const savedState = JSON.parse(savedStateJSON);
-                    if (savedState && savedState.appState) {
-                        setAppState(savedState.appState);
-                        setDetectedPeople(savedState.detectedPeople || []);
-                        setSelectedPerson(savedState.selectedPerson || null);
-                        setSourceGarmentBox(savedState.sourceGarmentBox || null);
-                        setLanguage(savedState.language || 'ko');
-                        setShowRestoreNotification(true);
-
-                        if (savedState.hasTargetImage) {
-                            const img = await loadData<string>('targetImage');
-                            if (img) setTargetImage(img);
-                        }
-                        if (savedState.hasSourceImage) {
-                            const img = await loadData<string>('sourceImage');
-                            if (img) setSourceImage(img);
-                        }
-                        if (savedState.history && Array.isArray(savedState.history)) {
-                            const restoredHistory: HistoryItem[] = [];
-                            for (const ref of savedState.history) {
-                                const img = await loadData<string>(ref.id);
-                                if (img) {
-                                    restoredHistory.push({ id: ref.id, generatedImage: img });
-                                }
-                            }
-                            setHistory(restoredHistory);
-                        }
-                    }
-                } catch (e) {
-                    console.error("Failed to parse or load state", e);
-                    localStorage.removeItem(LOCAL_STORAGE_KEY);
-                    await clearDB();
-                }
-            }
-        };
-
-        loadStateFromStorage();
-    }, []);
-
+    // Save state to localStorage on change
     useEffect(() => {
         const savableStates = [
             AppState.TARGET_PERSON_CHOOSING,
@@ -116,47 +75,25 @@ const App: React.FC = () => {
             AppState.GARMENT_SELECTED,
         ];
 
-        const saveStateToStorage = async () => {
-            if (savableStates.includes(appState)) {
-                try {
-                    if (targetImage) await saveData('targetImage', targetImage);
-                    if (sourceImage) await saveData('sourceImage', sourceImage);
-                    
-                    const historyReferences = [];
-                    for (const item of history) {
-                        await saveData(item.id, item.generatedImage);
-                        historyReferences.push({ id: item.id });
-                    }
-
-                    const stateToSave = {
-                        appState,
-                        hasTargetImage: !!targetImage,
-                        hasSourceImage: !!sourceImage,
-                        detectedPeople,
-                        selectedPerson,
-                        sourceGarmentBox,
-                        language,
-                        history: historyReferences,
-                    };
-                    
-                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
-                } catch (e) {
-                    console.error("Failed to save state", e);
-                }
+        if (savableStates.includes(appState)) {
+            const stateToSave = {
+                appState,
+                targetImage,
+                sourceImage,
+                detectedPeople,
+                selectedPerson,
+                sourceGarmentBox,
+                language,
+                history,
+            };
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
+            } catch (e) {
+                console.error("Failed to save state to localStorage", e);
             }
-        };
-
-        saveStateToStorage();
+        }
     }, [appState, targetImage, sourceImage, detectedPeople, selectedPerson, sourceGarmentBox, language, history]);
 
-    const handleSaveSettings = (newSettings: AppSettings) => {
-        setSettings(newSettings);
-        try {
-            localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
-        } catch (e) {
-            console.error("Failed to save settings to localStorage", e);
-        }
-    };
 
     const handleReset = useCallback(() => {
         setAppState(AppState.IDLE);
@@ -170,18 +107,14 @@ const App: React.FC = () => {
         setLoadingMessage('');
         setImageUrl('');
         localStorage.removeItem(LOCAL_STORAGE_KEY);
-        clearDB().catch(e => console.error("Failed to clear IndexedDB", e));
     }, []);
 
     const handleImageFile = async (file: File, imageSetter: (b64: string) => void, nextState: AppState) => {
         setLoadingMessage(t('analyzingImageQuality'));
-        setAppState(AppState.GENERATING);
+        setAppState(AppState.GENERATING); // Use a generic loading state
         setError(null);
 
         try {
-            if (file.size > MAX_FILE_SIZE_BYTES) {
-                throw new Error(t('fileTooLargeError', { size: MAX_FILE_SIZE_MB }));
-            }
             const base64 = await blobToBase64(file);
             const qualityResult = await checkImageQuality(base64);
             if (!qualityResult.isOk) {
@@ -235,7 +168,7 @@ const App: React.FC = () => {
         if (!imageUrl || isFetchingUrl) return;
 
         setIsFetchingUrl(true);
-        await processProvidedImage(() => urlToBase64(imageUrl, MAX_FILE_SIZE_BYTES));
+        await processProvidedImage(() => urlToBase64(imageUrl, 5 * 1024 * 1024));
         setIsFetchingUrl(false);
     };
 
@@ -254,11 +187,6 @@ const App: React.FC = () => {
                 throw new Error(t('clipboardEmptyError'));
             }
             const blob = await imageItem.getType(imageItem.types.find(type => type.startsWith('image/'))!);
-            
-            if (blob.size > MAX_FILE_SIZE_BYTES) {
-                throw new Error(t('fileTooLargeError', { size: MAX_FILE_SIZE_MB }));
-            }
-
             await processProvidedImage(() => blobToBase64(blob));
 
         } catch (err) {
@@ -304,7 +232,7 @@ const App: React.FC = () => {
             if (appState === AppState.ANALYZING_TARGET_IMAGE && targetImage) {
                 setLoadingMessage(t('detectingPeople'));
                 try {
-                    const people = await detectPeopleInImage(targetImage, settings.detectionModel);
+                    const people = await detectPeopleInImage(targetImage);
                     if (people.length > 0) {
                         setDetectedPeople(people);
                         setAppState(AppState.TARGET_PERSON_CHOOSING);
@@ -321,7 +249,7 @@ const App: React.FC = () => {
             }
         };
         analyzeTargetImage();
-    }, [appState, targetImage, t, settings.detectionModel]);
+    }, [appState, targetImage, t]);
 
     useEffect(() => {
         const performVirtualTryOn = async () => {
@@ -335,8 +263,7 @@ const App: React.FC = () => {
                         selectedPerson.box,
                         sourceImage,
                         sourceGarmentBox,
-                        language,
-                        settings.generationModel
+                        language
                     );
                     setGeneratedImage(resultImage);
                     const newHistoryItem: HistoryItem = { id: new Date().toISOString(), generatedImage: resultImage };
@@ -354,22 +281,10 @@ const App: React.FC = () => {
             }
         };
         performVirtualTryOn();
-    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t, settings.generationModel]);
+    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t]);
 
-    const handleClearHistory = async () => {
+    const handleClearHistory = () => {
         setHistory([]);
-        // We only need to clear the session data in localStorage, 
-        // IndexedDB will be overwritten or cleared on next full reset.
-        const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (savedStateJSON) {
-             try {
-                const savedState = JSON.parse(savedStateJSON);
-                savedState.history = [];
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(savedState));
-             } catch(e) {
-                console.error("Could not clear history from storage", e);
-             }
-        }
     };
     
     const toggleLanguage = () => {
@@ -446,18 +361,17 @@ const App: React.FC = () => {
             case AppState.GARMENT_SELECTED:
                  if (!sourceImage) return null;
                  const isSameImage = targetImage === sourceImage;
-                 const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
                  return (
                     <div className="w-full max-w-2xl mx-auto flex flex-col items-center gap-6">
                         <ImageEditor 
                             imageSrc={sourceImage} 
                             onBoxDrawn={handleGarmentBoxDrawn} 
                             boxColor="rgba(34, 197, 94, 0.9)" 
-                            instruction={isTouchDevice ? t('step5InstructionMobile') : t('step5Instruction')} 
+                            instruction={t('step5Instruction')} 
                             existingBox={isSameImage ? selectedPerson?.box : null}
                             garmentBox={sourceGarmentBox}
                         />
-                        {appState === AppState.GARMENT_SELECTED && !isTouchDevice && (
+                        {appState === AppState.GARMENT_SELECTED && (
                              <button 
                                 onClick={handleGenerateClick}
                                 className="px-8 py-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-bold text-lg transition-colors duration-300 shadow-lg animate-pulse"
@@ -494,7 +408,6 @@ const App: React.FC = () => {
 
     return (
         <div className="bg-gray-900 text-white min-h-screen font-sans">
-            <Settings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onSave={handleSaveSettings} currentSettings={settings} />
             {showRestoreNotification && (
                 <div className="bg-indigo-600 text-center py-2 px-4 relative">
                     <p className="text-sm font-semibold">{t('sessionRestoredNotification')}</p>
@@ -512,7 +425,7 @@ const App: React.FC = () => {
             <header className="py-6 px-4 md:px-8 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10 border-b border-gray-700">
                 <div className="max-w-7xl mx-auto flex justify-between items-center">
                     <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500">{t('appTitle')}</h1>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-4">
                         <button onClick={toggleLanguage} className="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors">
                             {language === 'en' ? '한국어' : 'English'}
                         </button>
@@ -521,12 +434,6 @@ const App: React.FC = () => {
                                 {t('startOverButton')}
                             </button>
                         )}
-                         <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors" aria-label="Settings">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0l-.1.41a1.52 1.52 0 01-1.34 1.34l-.41.1c-1.56.38-1.56 2.6 0 2.98l.41.1a1.52 1.52 0 011.34 1.34l.1.41c.38 1.56 2.6 1.56 2.98 0l.1-.41a1.52 1.52 0 011.34-1.34l.41-.1c1.56-.38 1.56-2.6 0-2.98l-.41-.1a1.52 1.52 0 01-1.34-1.34l-.1-.41zM10 8a2 2 0 100 4 2 2 0 000-4z" clipRule="evenodd" />
-                                <path d="M15.73 4.27a1 1 0 01.27.27l.27.27a1 1 0 010 1.41l-1.5 1.5a1 1 0 01-1.41 0l-.27-.27a1 1 0 010-1.41l1.5-1.5a1 1 0 011.14 0zM4.27 15.73a1 1 0 01.27.27l.27.27a1 1 0 010 1.41l-1.5 1.5a1 1 0 01-1.41 0l-.27-.27a1 1 0 010-1.41l1.5-1.5a1 1 0 011.14 0zM4.27 4.27a1 1 0 011.41 0l1.5 1.5a1 1 0 010 1.41l-.27.27a1 1 0 01-1.41 0l-1.5-1.5a1 1 0 010-1.41l.27-.27zM15.73 15.73a1 1 0 011.41 0l1.5 1.5a1 1 0 010 1.41l-.27.27a1 1 0 01-1.41 0l-1.5-1.5a1 1 0 010-1.41l.27-.27z" />
-                            </svg>
-                        </button>
                     </div>
                 </div>
             </header>
@@ -546,20 +453,7 @@ const App: React.FC = () => {
             )}
             
             <footer className="text-center py-6 text-gray-500 text-sm border-t border-gray-800">
-                <div className="flex items-center justify-center gap-4">
-                    <p>{t('footerText')}</p>
-                    {isApiKeyOk ? (
-                        <div className="flex items-center gap-1.5 text-green-400">
-                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                            <span>{t('apiKeyConnected')}</span>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-1.5 text-red-400">
-                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                            <span>{t('apiKeyMissing')}</span>
-                        </div>
-                    )}
-                </div>
+                <p>{t('footerText')}</p>
             </footer>
         </div>
     );

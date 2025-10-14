@@ -1,22 +1,18 @@
+
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BoundingBox, DetectedPerson, Language } from '../types';
 
-// Use import.meta.env for client-side variables in Vite
-const apiKey = import.meta.env.VITE_API_KEY;
-
-// The app will now handle a missing API key gracefully in the UI.
-// API calls will fail if the key is missing, which will be caught by the app.
-const ai = new GoogleGenAI({ apiKey: apiKey || '' });
-
-export const isApiKeyAvailable = (): boolean => {
-    return !!apiKey;
+if (!process.env.API_KEY) {
+  throw new Error("API_KEY environment variable is not set");
 }
+
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const getMimeType = (base64: string) => {
     return base64.substring(base64.indexOf(":") + 1, base64.indexOf(";"));
 }
 
-export const detectPeopleInImage = async (imageBase64: string, modelName: string): Promise<DetectedPerson[]> => {
+export const detectPeopleInImage = async (imageBase64: string): Promise<DetectedPerson[]> => {
     const imagePart = {
         inlineData: {
             mimeType: getMimeType(imageBase64),
@@ -27,7 +23,7 @@ export const detectPeopleInImage = async (imageBase64: string, modelName: string
     const prompt = "Analyze the provided image and identify all individuals. For each person found, provide their bounding box coordinates (x, y, width, height) normalized to the range [0, 1]. Also assign a unique ID like 'Person 1', 'Person 2', etc. Return this information in a JSON object.";
 
     const response = await ai.models.generateContent({
-        model: modelName,
+        model: 'gemini-2.5-flash',
         contents: { parts: [imagePart, { text: prompt }] },
         config: {
             responseMimeType: "application/json",
@@ -119,7 +115,6 @@ export const generateVirtualTryOnImage = async (
   sourceImageBase64: string,
   sourceGarmentBox: BoundingBox,
   language: Language,
-  modelName: string,
 ): Promise<string> => {
   const isSameImage = targetImageBase64 === sourceImageBase64;
   const prompt = buildVirtualTryOnPrompt(targetPersonBox, sourceGarmentBox, isSameImage, language);
@@ -143,7 +138,7 @@ export const generateVirtualTryOnImage = async (
     : [targetImagePart, sourceImagePart, { text: prompt }];
 
   const response = await ai.models.generateContent({
-    model: modelName,
+    model: 'gemini-2.5-flash-image',
     contents: { parts },
     config: {
       responseModalities: [Modality.IMAGE, Modality.TEXT],
