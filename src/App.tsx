@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppState, BoundingBox, DetectedPerson, HistoryItem, AppSettings } from './types';
 import { useLocalization } from './context/LocalizationContext';
-import { detectPeopleInImage, generateVirtualTryOnImage, isApiKeyAvailable } from './services/geminiService';
+import { detectPeopleInImage, generateVirtualTryOnImage, isApiKeyAvailable, getCorrectedModelName } from './services/geminiService';
 import { blobToBase64, urlToBase64 } from './utils/fileUtils';
 import { checkImageQuality } from './utils/imageQuality';
 
@@ -64,10 +64,9 @@ const App: React.FC = () => {
                 setHistory(savedHistory);
             }
             if (savedSettings) {
-                // Auto-correct deprecated model names from old saved settings
-                if (savedSettings.generationModel === 'gemini-2.5-flash-preview-image') {
-                    savedSettings.generationModel = 'gemini-2.5-flash-image';
-                }
+                // Sanitize model names from old saved settings using the centralized corrector
+                savedSettings.generationModel = getCorrectedModelName(savedSettings.generationModel);
+                savedSettings.detectionModel = getCorrectedModelName(savedSettings.detectionModel);
                 setSettings(savedSettings);
             }
 

@@ -20,6 +20,23 @@ export const isApiKeyAvailable = (): boolean => {
     return !!apiKey;
 };
 
+// Centralized map for correcting old or deprecated model names.
+const MODEL_CORRECTIONS: Record<string, string> = {
+    'gemini-1.5-flash': 'gemini-2.5-flash',
+    'gemini-pro': 'gemini-2.5-pro',
+    'gemini-1.5-pro': 'gemini-2.5-pro',
+    'gemini-2.5-flash-preview-image': 'gemini-2.5-flash-image',
+};
+
+/**
+ * Corrects a model name if it's found in the correction map.
+ * @param modelName The model name to check.
+ * @returns The corrected model name or the original if no correction is needed.
+ */
+export const getCorrectedModelName = (modelName: string): string => {
+    return MODEL_CORRECTIONS[modelName] || modelName;
+};
+
 const getMimeType = (base64: string) => {
     return base64.substring(base64.indexOf(":") + 1, base64.indexOf(";"));
 }
@@ -37,8 +54,10 @@ export const detectPeopleInImage = async (imageBase64: string, model: string): P
 
         const prompt = "Analyze the provided image and identify all individuals. For each person found, provide their bounding box coordinates (x, y, width, height) normalized to the range [0, 1]. Also assign a unique ID like 'Person 1', 'Person 2', etc. Return this information in a JSON object.";
 
+        const correctedModel = getCorrectedModelName(model);
+
         const response = await ai.models.generateContent({
-            model: model,
+            model: correctedModel,
             contents: { parts: [imagePart, { text: prompt }] },
             config: {
                 responseMimeType: "application/json",
@@ -136,11 +155,7 @@ export const generateVirtualTryOnImage = async (
 ): Promise<string> => {
   if (!isApiKeyAvailable()) throw new Error("API Key is missing.");
   
-  // Automatically correct deprecated model names to prevent quota errors.
-  let correctedModel = model;
-  if (model === 'gemini-2.5-flash-preview-image') {
-    correctedModel = 'gemini-2.5-flash-image';
-  }
+  const correctedModel = getCorrectedModelName(model);
 
   try {
       const isSameImage = targetImageBase64 === sourceImageBase64;
