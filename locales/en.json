@@ -32,6 +32,7 @@
   "qualityErrorBlurry": "The image appears to be blurry",
   "qualityErrorSuggestion": "Please use a clear, well-lit, high-resolution photo.",
   "step5Instruction": "Draw a box around the clothing item.",
+  "generateButton": "Generate Image",
   "generatingText": "Generating your virtual try-on... This may take a moment.",
   "generationFailed": "The virtual try-on could not be generated.",
   "resultTitle": "Generation Complete!",
@@ -47,5 +48,7 @@
   "generationFailedError": "Failed to generate the virtual try-on image. The model might be busy or the request could not be processed. Please try again.",
   "historyTitle": "Generation History",
   "clearHistoryButton": "Clear History",
-  "footerText": "Powered by Gemini"
+  "footerText": "Powered by Gemini",
+  "sessionRestoredNotification": "Your previous session has been restored.",
+  "closeButton": "Close"
 }

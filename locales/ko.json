@@ -32,6 +32,7 @@
   "qualityErrorBlurry": "이미지가 흐리게 보입니다",
   "qualityErrorSuggestion": "선명하고, 밝고, 고해상도의 사진을 사용해주세요.",
   "step5Instruction": "의류 아이템 주위에 상자를 그리세요.",
+  "generateButton": "이미지 생성",
   "generatingText": "가상 피팅 이미지를 생성 중입니다... 잠시만 기다려 주세요.",
   "generationFailed": "가상 피팅 이미지를 생성할 수 없습니다.",
   "resultTitle": "생성 완료!",
@@ -47,5 +48,7 @@
   "generationFailedError": "가상 피팅 이미지 생성에 실패했습니다. 모델이 사용 중이거나 요청을 처리할 수 없습니다. 다시 시도해 주세요.",
   "historyTitle": "생성 기록",
   "clearHistoryButton": "기록 지우기",
-  "footerText": "Gemini 기반"
+  "footerText": "Gemini 기반",
+  "sessionRestoredNotification": "이전 세션이 복원되었습니다.",
+  "closeButton": "닫기"
 }

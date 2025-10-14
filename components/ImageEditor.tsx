@@ -6,10 +6,11 @@ interface ImageEditorProps {
   onBoxDrawn: (box: BoundingBox) => void;
   boxColor: string;
   instruction: string;
-  existingBox?: BoundingBox | null;
+  existingBox?: BoundingBox | null; // Person box
+  garmentBox?: BoundingBox | null; // Garment box
 }
 
-export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, boxColor, instruction, existingBox = null }) => {
+export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, boxColor, instruction, existingBox = null, garmentBox = null }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -50,12 +51,21 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
             height: existingBox.height * canvas.height,
         }, 'rgba(0, 128, 255, 0.7)'); // A different color for existing box
       }
+      
+      if (garmentBox && !isDrawing) {
+        drawBox({
+            x: garmentBox.x * canvas.width,
+            y: garmentBox.y * canvas.height,
+            width: garmentBox.width * canvas.width,
+            height: garmentBox.height * canvas.height,
+        }, boxColor);
+      }
 
       if (box) {
         drawBox(box, boxColor);
       }
     };
-  }, [imageSrc, box, boxColor, existingBox]);
+  }, [imageSrc, box, boxColor, existingBox, garmentBox, isDrawing]);
 
   useEffect(() => {
     draw();
@@ -93,7 +103,9 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
   };
 
   const handleMouseUp = () => {
+    if (!isDrawing) return;
     setIsDrawing(false);
+    
     if (!box || !canvasRef.current || box.width < 5 || box.height < 5) {
       setBox(null);
       return;
@@ -106,7 +118,8 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
       width: box.width / canvas.width,
       height: box.height / canvas.height,
     };
-
+    
+    setBox(null);
     onBoxDrawn(normalizedBox);
   };
 

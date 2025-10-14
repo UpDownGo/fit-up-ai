@@ -10,6 +10,8 @@ import { PersonSelector } from './components/PersonSelector';
 import { ImageEditor } from './components/ImageEditor';
 import { History } from './components/History';
 
+const LOCAL_STORAGE_KEY = 'virtualTryOnState';
+
 const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
     <div className="flex flex-col items-center justify-center text-center p-8">
         <svg className="animate-spin -ml-1 mr-3 h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -34,8 +36,63 @@ const App: React.FC = () => {
     const [imageUrl, setImageUrl] = useState('');
     const [isFetchingUrl, setIsFetchingUrl] = useState(false);
     const [isPasting, setIsPasting] = useState(false);
+    const [showRestoreNotification, setShowRestoreNotification] = useState(false);
     
     const { t, language, setLanguage } = useLocalization();
+    
+    // Load state from localStorage on initial mount
+    useEffect(() => {
+        const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (savedStateJSON) {
+            try {
+                const savedState = JSON.parse(savedStateJSON);
+                if (savedState && savedState.appState) {
+                    setAppState(savedState.appState);
+                    setTargetImage(savedState.targetImage || null);
+                    setSourceImage(savedState.sourceImage || null);
+                    setDetectedPeople(savedState.detectedPeople || []);
+                    setSelectedPerson(savedState.selectedPerson || null);
+                    setSourceGarmentBox(savedState.sourceGarmentBox || null);
+                    setLanguage(savedState.language || 'ko');
+                    setHistory(savedState.history || []);
+                    setShowRestoreNotification(true);
+                }
+            } catch (e) {
+                console.error("Failed to parse saved state from localStorage", e);
+                localStorage.removeItem(LOCAL_STORAGE_KEY);
+            }
+        }
+    }, []); // Empty array ensures this runs only once on mount
+
+    // Save state to localStorage on change
+    useEffect(() => {
+        const savableStates = [
+            AppState.TARGET_PERSON_CHOOSING,
+            AppState.TARGET_PERSON_SELECTED,
+            AppState.SOURCE_TYPE_CHOSEN,
+            AppState.SOURCE_IMAGE_UPLOADED,
+            AppState.GARMENT_SELECTED,
+        ];
+
+        if (savableStates.includes(appState)) {
+            const stateToSave = {
+                appState,
+                targetImage,
+                sourceImage,
+                detectedPeople,
+                selectedPerson,
+                sourceGarmentBox,
+                language,
+                history,
+            };
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
+            } catch (e) {
+                console.error("Failed to save state to localStorage", e);
+            }
+        }
+    }, [appState, targetImage, sourceImage, detectedPeople, selectedPerson, sourceGarmentBox, language, history]);
+
 
     const handleReset = useCallback(() => {
         setAppState(AppState.IDLE);
@@ -48,6 +105,7 @@ const App: React.FC = () => {
         setError(null);
         setLoadingMessage('');
         setImageUrl('');
+        localStorage.removeItem(LOCAL_STORAGE_KEY);
     }, []);
 
     const handleImageFile = async (file: File, imageSetter: (b64: string) => void, nextState: AppState) => {
@@ -161,6 +219,12 @@ const App: React.FC = () => {
         setSourceGarmentBox(box);
         setAppState(AppState.GARMENT_SELECTED);
     };
+
+    const handleGenerateClick = () => {
+        if (targetImage && selectedPerson && sourceImage && sourceGarmentBox) {
+            setAppState(AppState.GENERATING);
+        }
+    };
     
     useEffect(() => {
         const analyzeTargetImage = async () => {
@@ -188,9 +252,8 @@ const App: React.FC = () => {
 
     useEffect(() => {
         const performVirtualTryOn = async () => {
-            if (appState === AppState.GARMENT_SELECTED && targetImage && selectedPerson && sourceImage && sourceGarmentBox) {
+            if (appState === AppState.GENERATING && targetImage && selectedPerson && sourceImage && sourceGarmentBox) {
                 setLoadingMessage(t('generatingImage'));
-                setAppState(AppState.GENERATING);
                 setGeneratedImage(null);
                 setError(null);
                 try {
@@ -225,8 +288,8 @@ const App: React.FC = () => {
     };
 
     const renderContent = () => {
-        if (loadingMessage) {
-            return <LoadingSpinner message={loadingMessage} />;
+        if (appState === AppState.GENERATING || loadingMessage) {
+            return <LoadingSpinner message={loadingMessage || t('generatingImage')} />;
         }
 
         switch (appState) {
@@ -291,9 +354,29 @@ const App: React.FC = () => {
                 );
 
             case AppState.SOURCE_IMAGE_UPLOADED:
+            case AppState.GARMENT_SELECTED:
                  if (!sourceImage) return null;
                  const isSameImage = targetImage === sourceImage;
-                 return <ImageEditor imageSrc={sourceImage} onBoxDrawn={handleGarmentBoxDrawn} boxColor="rgba(34, 197, 94, 0.9)" instruction={t('step5Instruction')} existingBox={isSameImage ? selectedPerson?.box : null} />;
+                 return (
+                    <div className="w-full max-w-2xl mx-auto flex flex-col items-center gap-6">
+                        <ImageEditor 
+                            imageSrc={sourceImage} 
+                            onBoxDrawn={handleGarmentBoxDrawn} 
+                            boxColor="rgba(34, 197, 94, 0.9)" 
+                            instruction={t('step5Instruction')} 
+                            existingBox={isSameImage ? selectedPerson?.box : null}
+                            garmentBox={sourceGarmentBox}
+                        />
+                        {appState === AppState.GARMENT_SELECTED && (
+                             <button 
+                                onClick={handleGenerateClick}
+                                className="px-8 py-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-bold text-lg transition-colors duration-300 shadow-lg animate-pulse"
+                            >
+                                {t('generateButton')}
+                            </button>
+                        )}
+                    </div>
+                );
             
             case AppState.RESULT_READY:
                 if (!generatedImage) return null;
@@ -321,6 +404,20 @@ const App: React.FC = () => {
 
     return (
         <div className="bg-gray-900 text-white min-h-screen font-sans">
+            {showRestoreNotification && (
+                <div className="bg-indigo-600 text-center py-2 px-4 relative">
+                    <p className="text-sm font-semibold">{t('sessionRestoredNotification')}</p>
+                    <button 
+                        onClick={() => setShowRestoreNotification(false)} 
+                        className="absolute top-1/2 right-4 -translate-y-1/2 text-white hover:bg-indigo-500 rounded-full p-1"
+                        aria-label={t('closeButton')}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+            )}
             <header className="py-6 px-4 md:px-8 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10 border-b border-gray-700">
                 <div className="max-w-7xl mx-auto flex justify-between items-center">
                     <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500">{t('appTitle')}</h1>
