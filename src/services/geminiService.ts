@@ -2,17 +2,31 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BoundingBox, DetectedPerson, Language } from '../types';
 
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable is not set");
+// Use import.meta.env for Vite environment variables, which is correct for Vercel deployments.
+const apiKey = import.meta.env.VITE_API_KEY;
+
+// Log an error to the console for developers but do not throw a hard error that crashes the app.
+if (!apiKey) {
+  console.error("VITE_API_KEY environment variable is not set. The application will not function correctly without it.");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize with the key or an empty string to prevent the app from crashing.
+const ai = new GoogleGenAI({ apiKey: apiKey || "" });
+
+/**
+ * Checks if the API key is provided in the environment variables.
+ * @returns {boolean} True if the API key is available, false otherwise.
+ */
+export const isApiKeyAvailable = (): boolean => {
+    return !!apiKey;
+};
 
 const getMimeType = (base64: string) => {
     return base64.substring(base64.indexOf(":") + 1, base64.indexOf(";"));
 }
 
-export const detectPeopleInImage = async (imageBase64: string): Promise<DetectedPerson[]> => {
+export const detectPeopleInImage = async (imageBase64: string, model: string): Promise<DetectedPerson[]> => {
+    if (!isApiKeyAvailable()) throw new Error("API Key is missing.");
     const imagePart = {
         inlineData: {
             mimeType: getMimeType(imageBase64),
@@ -23,7 +37,7 @@ export const detectPeopleInImage = async (imageBase64: string): Promise<Detected
     const prompt = "Analyze the provided image and identify all individuals. For each person found, provide their bounding box coordinates (x, y, width, height) normalized to the range [0, 1]. Also assign a unique ID like 'Person 1', 'Person 2', etc. Return this information in a JSON object.";
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: model,
         contents: { parts: [imagePart, { text: prompt }] },
         config: {
             responseMimeType: "application/json",
@@ -115,7 +129,9 @@ export const generateVirtualTryOnImage = async (
   sourceImageBase64: string,
   sourceGarmentBox: BoundingBox,
   language: Language,
+  model: string,
 ): Promise<string> => {
+  if (!isApiKeyAvailable()) throw new Error("API Key is missing.");
   const isSameImage = targetImageBase64 === sourceImageBase64;
   const prompt = buildVirtualTryOnPrompt(targetPersonBox, sourceGarmentBox, isSameImage, language);
 
@@ -138,7 +154,7 @@ export const generateVirtualTryOnImage = async (
     : [targetImagePart, sourceImagePart, { text: prompt }];
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
+    model: model,
     contents: { parts },
     config: {
       responseModalities: [Modality.IMAGE, Modality.TEXT],

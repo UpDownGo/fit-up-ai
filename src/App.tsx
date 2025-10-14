@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppState, BoundingBox, DetectedPerson, HistoryItem } from './types';
+import { AppState, BoundingBox, DetectedPerson, HistoryItem, AppSettings } from './types';
 import { useLocalization } from './context/LocalizationContext';
-import { detectPeopleInImage, generateVirtualTryOnImage } from './services/geminiService';
+import { detectPeopleInImage, generateVirtualTryOnImage, isApiKeyAvailable } from './services/geminiService';
 import { blobToBase64, urlToBase64 } from './utils/fileUtils';
 import { checkImageQuality } from './utils/imageQuality';
 
@@ -10,8 +10,14 @@ import { ImageUploader } from './components/ImageUploader';
 import { PersonSelector } from './components/PersonSelector';
 import { ImageEditor } from './components/ImageEditor';
 import { History } from './components/History';
+import { Settings } from './components/Settings';
+import { saveData, loadData, clearDB } from './utils/db';
 
-const LOCAL_STORAGE_KEY = 'virtualTryOnState';
+
+const SESSION_STATE_KEY = 'virtualTryOnState';
+const SETTINGS_KEY = 'appSettings';
+const HISTORY_KEY = 'generationHistory';
+
 
 const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
     <div className="flex flex-col items-center justify-center text-center p-8">
@@ -38,16 +44,32 @@ const App: React.FC = () => {
     const [isFetchingUrl, setIsFetchingUrl] = useState(false);
     const [isPasting, setIsPasting] = useState(false);
     const [showRestoreNotification, setShowRestoreNotification] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isApiKeySet, setIsApiKeySet] = useState(false);
+    const [settings, setSettings] = useState<AppSettings>({
+      detectionModel: 'gemini-2.5-flash',
+      generationModel: 'gemini-2.5-flash-image',
+    });
     
     const { t, language, setLanguage } = useLocalization();
     
-    // Load state from localStorage on initial mount
     useEffect(() => {
-        const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (savedStateJSON) {
-            try {
-                const savedState = JSON.parse(savedStateJSON);
-                if (savedState && savedState.appState) {
+        setIsApiKeySet(isApiKeyAvailable());
+
+        const loadInitialData = async () => {
+            const savedState = await loadData<any>(SESSION_STATE_KEY);
+            const savedHistory = await loadData<HistoryItem[]>(HISTORY_KEY);
+            const savedSettings = await loadData<AppSettings>(SETTINGS_KEY);
+
+            if (savedHistory) {
+                setHistory(savedHistory);
+            }
+            if (savedSettings) {
+                setSettings(savedSettings);
+            }
+
+            if (savedState && savedState.appState) {
+                 try {
                     setAppState(savedState.appState);
                     setTargetImage(savedState.targetImage || null);
                     setSourceImage(savedState.sourceImage || null);
@@ -55,17 +77,16 @@ const App: React.FC = () => {
                     setSelectedPerson(savedState.selectedPerson || null);
                     setSourceGarmentBox(savedState.sourceGarmentBox || null);
                     setLanguage(savedState.language || 'ko');
-                    setHistory(savedState.history || []);
                     setShowRestoreNotification(true);
+                } catch (e) {
+                    console.error("Failed to parse saved state", e);
+                    await clearDB();
                 }
-            } catch (e) {
-                console.error("Failed to parse saved state from localStorage", e);
-                localStorage.removeItem(LOCAL_STORAGE_KEY);
             }
-        }
-    }, []); // Empty array ensures this runs only once on mount
+        };
+        loadInitialData();
+    }, [setLanguage]);
 
-    // Save state to localStorage on change
     useEffect(() => {
         const savableStates = [
             AppState.TARGET_PERSON_CHOOSING,
@@ -75,27 +96,17 @@ const App: React.FC = () => {
             AppState.GARMENT_SELECTED,
         ];
 
+        const stateToSave = {
+            appState, targetImage, sourceImage,
+            detectedPeople, selectedPerson, sourceGarmentBox, language,
+        };
+
         if (savableStates.includes(appState)) {
-            const stateToSave = {
-                appState,
-                targetImage,
-                sourceImage,
-                detectedPeople,
-                selectedPerson,
-                sourceGarmentBox,
-                language,
-                history,
-            };
-            try {
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
-            } catch (e) {
-                console.error("Failed to save state to localStorage", e);
-            }
+           saveData(SESSION_STATE_KEY, stateToSave).catch(e => console.error("Failed to save session state", e));
         }
-    }, [appState, targetImage, sourceImage, detectedPeople, selectedPerson, sourceGarmentBox, language, history]);
+    }, [appState, targetImage, sourceImage, detectedPeople, selectedPerson, sourceGarmentBox, language]);
 
-
-    const handleReset = useCallback(() => {
+    const handleReset = useCallback(async () => {
         setAppState(AppState.IDLE);
         setTargetImage(null);
         setSourceImage(null);
@@ -106,20 +117,26 @@ const App: React.FC = () => {
         setError(null);
         setLoadingMessage('');
         setImageUrl('');
-        localStorage.removeItem(LOCAL_STORAGE_KEY);
+        await clearDB();
     }, []);
 
     const handleImageFile = async (file: File, imageSetter: (b64: string) => void, nextState: AppState) => {
+        if (file.size > 5 * 1024 * 1024) {
+            setError(t('fileTooLargeError', { size: 5 }));
+            setAppState(AppState.ERROR);
+            return;
+        }
+
         setLoadingMessage(t('analyzingImageQuality'));
-        setAppState(AppState.GENERATING); // Use a generic loading state
+        setAppState(AppState.GENERATING);
         setError(null);
 
         try {
             const base64 = await blobToBase64(file);
             const qualityResult = await checkImageQuality(base64);
             if (!qualityResult.isOk) {
-                const issues = qualityResult.issues.map(issue => t(issue)).join(', ');
-                throw new Error(`${t('imageQualityError')}: ${issues}`);
+                const issues = qualityResult.issues.map(issue => t(`qualityError${issue.charAt(0).toUpperCase() + issue.slice(1).replace('-', '')}`)).join(', ');
+                throw new Error(`${t('imageQualityError')}: ${issues}. ${t('qualityErrorSuggestion')}`);
             }
             imageSetter(base64);
             setAppState(nextState);
@@ -140,20 +157,22 @@ const App: React.FC = () => {
             const base64 = await base64Provider();
             const qualityResult = await checkImageQuality(base64);
             if (!qualityResult.isOk) {
-                const issues = qualityResult.issues.map(issue => t(issue)).join(', ');
-                throw new Error(`${t('imageQualityError')}: ${issues}`);
+                const issues = qualityResult.issues.map(issue => t(`qualityError${issue.charAt(0).toUpperCase() + issue.slice(1).replace('-', '')}`)).join(', ');
+                throw new Error(`${t('imageQualityError')}: ${issues}. ${t('qualityErrorSuggestion')}`);
             }
             setSourceImage(base64);
             setAppState(AppState.SOURCE_IMAGE_UPLOADED);
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : t('imageProcessingError');
+            let errorMessage = err instanceof Error ? err.message : t('imageProcessingError');
+            if (errorMessage === 'FILE_TOO_LARGE') {
+                errorMessage = t('fileTooLargeError', { size: 5 });
+            }
             setError(errorMessage);
             setAppState(AppState.ERROR);
         } finally {
             setLoadingMessage('');
         }
     };
-
 
     const handleTargetImageUpload = (file: File) => {
         handleImageFile(file, setTargetImage, AppState.ANALYZING_TARGET_IMAGE);
@@ -166,7 +185,6 @@ const App: React.FC = () => {
     const handleUrlSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!imageUrl || isFetchingUrl) return;
-
         setIsFetchingUrl(true);
         await processProvidedImage(() => urlToBase64(imageUrl, 5 * 1024 * 1024));
         setIsFetchingUrl(false);
@@ -187,20 +205,18 @@ const App: React.FC = () => {
                 throw new Error(t('clipboardEmptyError'));
             }
             const blob = await imageItem.getType(imageItem.types.find(type => type.startsWith('image/'))!);
-            await processProvidedImage(() => blobToBase64(blob));
-
-        } catch (err) {
-            if (err instanceof DOMException && err.name === 'NotAllowedError') {
-                setError(t('clipboardPermissionError'));
-            } else {
-                setError(err instanceof Error ? err.message : t('imageUploadFailed'));
+             if (blob.size > 5 * 1024 * 1024) {
+                throw new Error(t('fileTooLargeError', { size: 5 }));
             }
+            await processProvidedImage(() => blobToBase64(blob));
+        } catch (err) {
+            const message = err instanceof Error ? err.message : t('imageUploadFailed');
+            setError(message.includes('NotAllowedError') ? t('clipboardPermissionError') : message);
             setAppState(AppState.ERROR);
         } finally {
             setIsPasting(false);
         }
     };
-
 
     const handlePersonSelected = (person: DetectedPerson) => {
         setSelectedPerson(person);
@@ -232,7 +248,7 @@ const App: React.FC = () => {
             if (appState === AppState.ANALYZING_TARGET_IMAGE && targetImage) {
                 setLoadingMessage(t('detectingPeople'));
                 try {
-                    const people = await detectPeopleInImage(targetImage);
+                    const people = await detectPeopleInImage(targetImage, settings.detectionModel);
                     if (people.length > 0) {
                         setDetectedPeople(people);
                         setAppState(AppState.TARGET_PERSON_CHOOSING);
@@ -241,7 +257,7 @@ const App: React.FC = () => {
                         setAppState(AppState.ERROR);
                     }
                 } catch (err) {
-                    setError(t('detectionFailedError'));
+                    setError(t('detectionFailedError') + (err instanceof Error ? `: ${err.message}`: ''));
                     setAppState(AppState.ERROR);
                 } finally {
                     setLoadingMessage('');
@@ -249,7 +265,7 @@ const App: React.FC = () => {
             }
         };
         analyzeTargetImage();
-    }, [appState, targetImage, t]);
+    }, [appState, targetImage, t, settings.detectionModel]);
 
     useEffect(() => {
         const performVirtualTryOn = async () => {
@@ -263,11 +279,14 @@ const App: React.FC = () => {
                         selectedPerson.box,
                         sourceImage,
                         sourceGarmentBox,
-                        language
+                        language,
+                        settings.generationModel
                     );
                     setGeneratedImage(resultImage);
                     const newHistoryItem: HistoryItem = { id: new Date().toISOString(), generatedImage: resultImage };
-                    setHistory(prev => [newHistoryItem, ...prev]);
+                    const updatedHistory = [newHistoryItem, ...history];
+                    setHistory(updatedHistory);
+                    await saveData(HISTORY_KEY, updatedHistory);
                     setAppState(AppState.RESULT_READY);
                 } catch (err) {
                     const detailedError = err instanceof Error ? err.message : String(err);
@@ -281,15 +300,21 @@ const App: React.FC = () => {
             }
         };
         performVirtualTryOn();
-    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t]);
+    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t, settings.generationModel, history]);
 
-    const handleClearHistory = () => {
+    const handleClearHistory = async () => {
         setHistory([]);
+        await saveData(HISTORY_KEY, []);
     };
     
     const toggleLanguage = () => {
         setLanguage(language === 'en' ? 'ko' : 'en');
     };
+
+    const handleSaveSettings = async (newSettings: AppSettings) => {
+        setSettings(newSettings);
+        await saveData(SETTINGS_KEY, newSettings);
+    }
 
     const renderContent = () => {
         if (appState === AppState.GENERATING || loadingMessage) {
@@ -429,6 +454,11 @@ const App: React.FC = () => {
                         <button onClick={toggleLanguage} className="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors">
                             {language === 'en' ? '한국어' : 'English'}
                         </button>
+                         <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors" aria-label={t('settingsTitle')}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106A1.532 1.532 0 0111.49 3.17zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                            </svg>
+                        </button>
                         {appState !== AppState.IDLE && (
                             <button onClick={handleReset} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold text-sm transition-colors duration-300">
                                 {t('startOverButton')}
@@ -437,6 +467,8 @@ const App: React.FC = () => {
                     </div>
                 </div>
             </header>
+            
+            <Settings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onSave={handleSaveSettings} currentSettings={settings} />
 
             <main className="py-12 px-4 md:px-8">
                 <div className="max-w-7xl mx-auto flex flex-col items-center">
@@ -453,7 +485,13 @@ const App: React.FC = () => {
             )}
             
             <footer className="text-center py-6 text-gray-500 text-sm border-t border-gray-800">
-                <p>{t('footerText')}</p>
+                 <div className="flex justify-center items-center gap-4">
+                    <p>{t('footerText')}</p>
+                    <div className="flex items-center gap-2" title={isApiKeySet ? t('apiKeyConnected') : t('apiKeyMissing')}>
+                        <span className={`h-2.5 w-2.5 rounded-full ${isApiKeySet ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                        <span>{isApiKeySet ? t('apiKeyConnected') : t('apiKeyMissing')}</span>
+                    </div>
+                </div>
             </footer>
         </div>
     );
