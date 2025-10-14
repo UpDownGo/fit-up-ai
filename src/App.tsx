@@ -340,8 +340,20 @@ const App: React.FC = () => {
         performVirtualTryOn();
     }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t, settings.generationModel]);
 
-    const handleClearHistory = () => {
+    const handleClearHistory = async () => {
         setHistory([]);
+        // We only need to clear the session data in localStorage, 
+        // IndexedDB will be overwritten or cleared on next full reset.
+        const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (savedStateJSON) {
+             try {
+                const savedState = JSON.parse(savedStateJSON);
+                savedState.history = [];
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(savedState));
+             } catch(e) {
+                console.error("Could not clear history from storage", e);
+             }
+        }
     };
     
     const toggleLanguage = () => {
