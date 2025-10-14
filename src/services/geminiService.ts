@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BoundingBox, DetectedPerson, Language } from '../types';
 
@@ -27,60 +26,62 @@ const getMimeType = (base64: string) => {
 
 export const detectPeopleInImage = async (imageBase64: string, model: string): Promise<DetectedPerson[]> => {
     if (!isApiKeyAvailable()) throw new Error("API Key is missing.");
-    const imagePart = {
-        inlineData: {
-            mimeType: getMimeType(imageBase64),
-            data: imageBase64.split(',')[1],
-        },
-    };
-
-    const prompt = "Analyze the provided image and identify all individuals. For each person found, provide their bounding box coordinates (x, y, width, height) normalized to the range [0, 1]. Also assign a unique ID like 'Person 1', 'Person 2', etc. Return this information in a JSON object.";
-
-    const response = await ai.models.generateContent({
-        model: model,
-        contents: { parts: [imagePart, { text: prompt }] },
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    people: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                id: { type: Type.STRING },
-                                box: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        x: { type: Type.NUMBER },
-                                        y: { type: Type.NUMBER },
-                                        width: { type: Type.NUMBER },
-                                        height: { type: Type.NUMBER },
-                                    },
-                                    required: ["x", "y", "width", "height"],
-                                }
-                            },
-                            required: ["id", "box"],
-                        }
-                    }
-                },
-                required: ["people"],
-            }
-        }
-    });
-
-    const jsonText = response.text.trim();
+    
     try {
+        const imagePart = {
+            inlineData: {
+                mimeType: getMimeType(imageBase64),
+                data: imageBase64.split(',')[1],
+            },
+        };
+
+        const prompt = "Analyze the provided image and identify all individuals. For each person found, provide their bounding box coordinates (x, y, width, height) normalized to the range [0, 1]. Also assign a unique ID like 'Person 1', 'Person 2', etc. Return this information in a JSON object.";
+
+        const response = await ai.models.generateContent({
+            model: model,
+            contents: { parts: [imagePart, { text: prompt }] },
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        people: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    id: { type: Type.STRING },
+                                    box: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            x: { type: Type.NUMBER },
+                                            y: { type: Type.NUMBER },
+                                            width: { type: Type.NUMBER },
+                                            height: { type: Type.NUMBER },
+                                        },
+                                        required: ["x", "y", "width", "height"],
+                                    }
+                                },
+                                required: ["id", "box"],
+                            }
+                        }
+                    },
+                    required: ["people"],
+                }
+            }
+        });
+
+        const jsonText = response.text.trim();
         const result = JSON.parse(jsonText);
         if (result.people && Array.isArray(result.people)) {
             return result.people;
         }
+        return [];
     } catch (e) {
-        console.error("Failed to parse JSON response for person detection:", jsonText, e);
-        throw new Error("Could not detect people in the image.");
+        console.error("Failed during person detection API call:", e);
+        const errorMessage = e instanceof Error ? e.message : "Could not detect people in the image.";
+        throw new Error(errorMessage);
     }
-    return [];
 };
 
 const promptTemplates = {
@@ -132,56 +133,63 @@ export const generateVirtualTryOnImage = async (
   model: string,
 ): Promise<string> => {
   if (!isApiKeyAvailable()) throw new Error("API Key is missing.");
-  const isSameImage = targetImageBase64 === sourceImageBase64;
-  const prompt = buildVirtualTryOnPrompt(targetPersonBox, sourceGarmentBox, isSameImage, language);
-
-  const targetImagePart = {
-    inlineData: {
-      mimeType: getMimeType(targetImageBase64),
-      data: targetImageBase64.split(',')[1],
-    },
-  };
   
-  const sourceImagePart = {
-    inlineData: {
-      mimeType: getMimeType(sourceImageBase64),
-      data: sourceImageBase64.split(',')[1],
-    },
-  };
+  try {
+      const isSameImage = targetImageBase64 === sourceImageBase64;
+      const prompt = buildVirtualTryOnPrompt(targetPersonBox, sourceGarmentBox, isSameImage, language);
 
-  const parts = isSameImage 
-    ? [targetImagePart, { text: prompt }]
-    : [targetImagePart, sourceImagePart, { text: prompt }];
+      const targetImagePart = {
+        inlineData: {
+          mimeType: getMimeType(targetImageBase64),
+          data: targetImageBase64.split(',')[1],
+        },
+      };
+      
+      const sourceImagePart = {
+        inlineData: {
+          mimeType: getMimeType(sourceImageBase64),
+          data: sourceImageBase64.split(',')[1],
+        },
+      };
 
-  const response = await ai.models.generateContent({
-    model: model,
-    contents: { parts },
-    config: {
-      responseModalities: [Modality.IMAGE, Modality.TEXT],
-    },
-  });
+      const parts = isSameImage 
+        ? [targetImagePart, { text: prompt }]
+        : [targetImagePart, sourceImagePart, { text: prompt }];
 
-  const imagePart = response.candidates?.[0]?.content?.parts.find(
-    (part) => part.inlineData
-  );
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: { parts },
+        config: {
+          responseModalities: [Modality.IMAGE, Modality.TEXT],
+        },
+      });
 
-  if (imagePart && imagePart.inlineData) {
-    const base64ImageBytes = imagePart.inlineData.data;
-    const mimeType = imagePart.inlineData.mimeType;
-    return `data:${mimeType};base64,${base64ImageBytes}`;
-  } else {
-    console.error("Full Gemini Response for debugging:", JSON.stringify(response, null, 2));
-    const blockReason = response.candidates?.[0]?.finishReason;
-    const safetyRatings = response.candidates?.[0]?.safetyRatings;
-    const responseText = response.text || "No text found.";
-    
-    let detailedReason = `The model returned text instead of an image: "${responseText}"`;
-    if (blockReason === 'SAFETY') {
-        detailedReason = `Request was blocked for safety reasons. Ratings: ${JSON.stringify(safetyRatings)}`;
-    } else if (blockReason && blockReason !== 'STOP') {
-        detailedReason = `Generation finished unexpectedly. Reason: ${blockReason}.`;
+      const imagePart = response.candidates?.[0]?.content?.parts.find(
+        (part) => part.inlineData
+      );
+
+      if (imagePart && imagePart.inlineData) {
+        const base64ImageBytes = imagePart.inlineData.data;
+        const mimeType = imagePart.inlineData.mimeType;
+        return `data:${mimeType};base64,${base64ImageBytes}`;
+      } else {
+        console.error("Full Gemini Response for debugging:", JSON.stringify(response, null, 2));
+        const blockReason = response.candidates?.[0]?.finishReason;
+        const safetyRatings = response.candidates?.[0]?.safetyRatings;
+        const responseText = response.text || "No text found.";
+        
+        let detailedReason = `The model returned text instead of an image: "${responseText}"`;
+        if (blockReason === 'SAFETY') {
+            detailedReason = `Request was blocked for safety reasons. Ratings: ${JSON.stringify(safetyRatings)}`;
+        } else if (blockReason && blockReason !== 'STOP') {
+            detailedReason = `Generation finished unexpectedly. Reason: ${blockReason}.`;
+        }
+
+        throw new Error(`No image was generated. ${detailedReason}`);
+      }
+    } catch(e) {
+        console.error("Failed during image generation API call:", e);
+        const errorMessage = e instanceof Error ? e.message : "Could not generate image.";
+        throw new Error(errorMessage);
     }
-
-    throw new Error(`No image was generated. ${detailedReason}`);
-  }
 };
