@@ -14,6 +14,8 @@ import { Settings } from './components/Settings';
 
 const LOCAL_STORAGE_KEY = 'virtualTryOnState';
 const SETTINGS_STORAGE_KEY = 'virtualTryOnSettings';
+const MAX_FILE_SIZE_MB = 5;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
     <div className="flex flex-col items-center justify-center text-center p-8">
@@ -177,6 +179,9 @@ const App: React.FC = () => {
         setError(null);
 
         try {
+            if (file.size > MAX_FILE_SIZE_BYTES) {
+                throw new Error(t('fileTooLargeError', { size: MAX_FILE_SIZE_MB }));
+            }
             const base64 = await blobToBase64(file);
             const qualityResult = await checkImageQuality(base64);
             if (!qualityResult.isOk) {
@@ -230,7 +235,7 @@ const App: React.FC = () => {
         if (!imageUrl || isFetchingUrl) return;
 
         setIsFetchingUrl(true);
-        await processProvidedImage(() => urlToBase64(imageUrl, 5 * 1024 * 1024));
+        await processProvidedImage(() => urlToBase64(imageUrl, MAX_FILE_SIZE_BYTES));
         setIsFetchingUrl(false);
     };
 
@@ -249,6 +254,11 @@ const App: React.FC = () => {
                 throw new Error(t('clipboardEmptyError'));
             }
             const blob = await imageItem.getType(imageItem.types.find(type => type.startsWith('image/'))!);
+            
+            if (blob.size > MAX_FILE_SIZE_BYTES) {
+                throw new Error(t('fileTooLargeError', { size: MAX_FILE_SIZE_MB }));
+            }
+
             await processProvidedImage(() => blobToBase64(blob));
 
         } catch (err) {
