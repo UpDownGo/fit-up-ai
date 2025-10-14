@@ -136,6 +136,12 @@ export const generateVirtualTryOnImage = async (
 ): Promise<string> => {
   if (!isApiKeyAvailable()) throw new Error("API Key is missing.");
   
+  // Automatically correct deprecated model names to prevent quota errors.
+  let correctedModel = model;
+  if (model === 'gemini-2.5-flash-preview-image') {
+    correctedModel = 'gemini-2.5-flash-image';
+  }
+
   try {
       const isSameImage = targetImageBase64 === sourceImageBase64;
       const prompt = buildVirtualTryOnPrompt(targetPersonBox, sourceGarmentBox, isSameImage, language);
@@ -159,7 +165,7 @@ export const generateVirtualTryOnImage = async (
         : [targetImagePart, sourceImagePart, { text: prompt }];
 
       const response = await ai.models.generateContent({
-        model: model,
+        model: correctedModel, // Use the corrected model name
         contents: { parts },
         config: {
           responseModalities: [Modality.IMAGE, Modality.TEXT],
