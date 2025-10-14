@@ -1,5 +1,3 @@
-
-
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BoundingBox, DetectedPerson, Language } from '../types';
 

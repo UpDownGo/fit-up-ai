@@ -441,7 +441,7 @@ const App: React.FC = () => {
                             existingBox={isSameImage ? selectedPerson?.box : null}
                             garmentBox={sourceGarmentBox}
                         />
-                        {appState === AppState.GARMENT_SELECTED && (
+                        {appState === AppState.GARMENT_SELECTED && !isTouchDevice && (
                              <button 
                                 onClick={handleGenerateClick}
                                 className="px-8 py-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-bold text-lg transition-colors duration-300 shadow-lg animate-pulse"
