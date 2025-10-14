@@ -1,23 +1,23 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BoundingBox, DetectedPerson, Language } from '../types';
 
-// FIX: Per coding guidelines, API key must be obtained from process.env.API_KEY.
-if (!process.env.API_KEY) {
+// FIX: Per coding guidelines, API key must be obtained from VITE_ prefixed env var for client-side code.
+if (!import.meta.env.VITE_API_KEY) {
   // Log an error to the console for developers but do not throw a hard error that crashes the app.
-  console.error("API_KEY environment variable is not set. The application will not function correctly without it.");
+  console.error("VITE_API_KEY environment variable is not set. The application will not function correctly without it.");
 }
 
 // Initialize with the key or an empty string to prevent the app from crashing.
 // The functions that use `ai` will check for the key's availability.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY || "" });
 
 /**
  * Checks if the API key is provided in the environment variables.
  * @returns {boolean} True if the API key is available, false otherwise.
  */
 export const isApiKeyAvailable = (): boolean => {
-    // FIX: Check process.env.API_KEY as per guidelines.
-    return !!process.env.API_KEY;
+    // FIX: Check import.meta.env.VITE_API_KEY as per Vite guidelines.
+    return !!import.meta.env.VITE_API_KEY;
 };
 
 /**

@@ -64,6 +64,8 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onSave, cur
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
             >
               <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
+              <option value="gemini-2.0-flash-exp-image">gemini-2.0-flash-exp-image</option>
+              <option value="gemini-2.5-flash-preview-image">gemini-2.5-flash-preview-image</option>
             </select>
           </div>
         </div>
