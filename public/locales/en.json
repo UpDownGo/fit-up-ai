@@ -41,6 +41,7 @@
   "downloadButton": "Download",
   "errorTitle": "An Error Occurred",
   "startOverButton": "Start Over",
+  "backButton": "Go Back",
   "analyzingImageQuality": "Analyzing image quality...",
   "detectingPeople": "Detecting people in the image...",
   "generatingImage": "Generating virtual try-on...",

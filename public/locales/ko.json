@@ -41,6 +41,7 @@
   "downloadButton": "다운로드",
   "errorTitle": "오류가 발생했습니다",
   "startOverButton": "처음부터 시작",
+  "backButton": "이전 단계",
   "analyzingImageQuality": "이미지 품질 분석 중...",
   "detectingPeople": "이미지에서 사람 감지 중...",
   "generatingImage": "가상 피팅 이미지 생성 중...",

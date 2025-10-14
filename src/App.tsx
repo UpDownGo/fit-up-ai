@@ -115,6 +115,40 @@ const App: React.FC = () => {
         setHistory([]); // Clear history from react state
         await Promise.all([clearSession(), clearHistory()]);
     }, []);
+    
+    const handleBack = useCallback(() => {
+        setError(null);
+        switch (appState) {
+            case AppState.RESULT_READY:
+                setGeneratedImage(null);
+                setAppState(AppState.GARMENT_SELECTED);
+                break;
+            case AppState.GARMENT_SELECTED:
+                setSourceGarmentBox(null);
+                setAppState(AppState.SOURCE_IMAGE_UPLOADED);
+                break;
+            case AppState.SOURCE_IMAGE_UPLOADED:
+                 setSourceImage(null);
+                 setSourceGarmentBox(null);
+                 setAppState(AppState.TARGET_PERSON_SELECTED);
+                 break;
+            case AppState.SOURCE_TYPE_CHOSEN:
+                setAppState(AppState.TARGET_PERSON_SELECTED);
+                break;
+            case AppState.TARGET_PERSON_SELECTED:
+                setSelectedPerson(null);
+                setAppState(AppState.TARGET_PERSON_CHOOSING);
+                break;
+            case AppState.TARGET_PERSON_CHOOSING:
+                setTargetImage(null);
+                setDetectedPeople([]);
+                setAppState(AppState.IDLE);
+                break;
+            case AppState.ERROR:
+                handleReset();
+                break;
+        }
+    }, [appState, handleReset]);
 
     const handleImageFile = async (file: File, imageSetter: (b64: string) => void, nextState: AppState) => {
         if (file.size > 5 * 1024 * 1024) {
@@ -427,6 +461,16 @@ const App: React.FC = () => {
                 return null;
         }
     };
+    
+    const statesWithBackButton: AppState[] = [
+        AppState.TARGET_PERSON_CHOOSING,
+        AppState.TARGET_PERSON_SELECTED,
+        AppState.SOURCE_TYPE_CHOSEN,
+        AppState.SOURCE_IMAGE_UPLOADED,
+        AppState.GARMENT_SELECTED,
+        AppState.RESULT_READY,
+        AppState.ERROR,
+    ];
 
     return (
         <div className="bg-gray-900 text-white min-h-screen font-sans">
@@ -457,7 +501,7 @@ const App: React.FC = () => {
                             </svg>
                         </button>
                         {appState !== AppState.IDLE && (
-                            <button onClick={handleReset} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold text-sm transition-colors duration-300">
+                            <button onClick={handleReset} className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold text-sm transition-colors duration-300">
                                 {t('startOverButton')}
                             </button>
                         )}
@@ -467,6 +511,16 @@ const App: React.FC = () => {
             
             <main className="py-12 px-4 md:px-8">
                 <div className="max-w-7xl mx-auto flex flex-col items-center">
+                    {statesWithBackButton.includes(appState) && (
+                        <div className="w-full max-w-4xl mb-8">
+                             <button onClick={handleBack} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white font-semibold text-sm transition-colors duration-300 flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                                {t('backButton')}
+                            </button>
+                        </div>
+                    )}
                     {renderContent()}
                 </div>
             </main>
