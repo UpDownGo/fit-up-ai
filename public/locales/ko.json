@@ -52,11 +52,5 @@
   "clearHistoryButton": "기록 지우기",
   "footerText": "Gemini 기반",
   "sessionRestoredNotification": "이전 세션이 복원되었습니다.",
-  "closeButton": "닫기",
-  "settingsTitle": "설정",
-  "detectionModelLabel": "사람 감지 모델",
-  "generationModelLabel": "이미지 생성 모델",
-  "saveSettingsButton": "설정 저장",
-  "apiKeyConnected": "API 키 연결됨",
-  "apiKeyMissing": "API 키가 없습니다"
+  "closeButton": "닫기"
 }

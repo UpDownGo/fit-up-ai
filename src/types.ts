@@ -30,6 +30,7 @@ export interface HistoryItem {
 
 export type Language = 'ko' | 'en';
 
+// FIX: Added AppSettings interface to resolve import error in Settings.tsx.
 export interface AppSettings {
   detectionModel: string;
   generationModel: string;

@@ -1,47 +1,30 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BoundingBox, DetectedPerson, Language } from '../types';
 
-// Use import.meta.env for Vite environment variables, which is correct for Vercel deployments.
-const apiKey = import.meta.env.VITE_API_KEY;
-
-// Log an error to the console for developers but do not throw a hard error that crashes the app.
-if (!apiKey) {
-  console.error("VITE_API_KEY environment variable is not set. The application will not function correctly without it.");
+// FIX: Per coding guidelines, API key must be obtained from process.env.API_KEY.
+if (!process.env.API_KEY) {
+  // Log an error to the console for developers but do not throw a hard error that crashes the app.
+  console.error("API_KEY environment variable is not set. The application will not function correctly without it.");
 }
 
 // Initialize with the key or an empty string to prevent the app from crashing.
-const ai = new GoogleGenAI({ apiKey: apiKey || "" });
+// The functions that use `ai` will check for the key's availability.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
 /**
  * Checks if the API key is provided in the environment variables.
  * @returns {boolean} True if the API key is available, false otherwise.
  */
 export const isApiKeyAvailable = (): boolean => {
-    return !!apiKey;
-};
-
-// Centralized map for correcting old or deprecated model names.
-const MODEL_CORRECTIONS: Record<string, string> = {
-    'gemini-1.5-flash': 'gemini-2.5-flash',
-    'gemini-pro': 'gemini-2.5-pro',
-    'gemini-1.5-pro': 'gemini-2.5-pro',
-    'gemini-2.5-flash-preview-image': 'gemini-2.5-flash-image',
-};
-
-/**
- * Corrects a model name if it's found in the correction map.
- * @param modelName The model name to check.
- * @returns The corrected model name or the original if no correction is needed.
- */
-export const getCorrectedModelName = (modelName: string): string => {
-    return MODEL_CORRECTIONS[modelName] || modelName;
+    // FIX: Check process.env.API_KEY as per guidelines.
+    return !!process.env.API_KEY;
 };
 
 const getMimeType = (base64: string) => {
     return base64.substring(base64.indexOf(":") + 1, base64.indexOf(";"));
 }
 
-export const detectPeopleInImage = async (imageBase64: string, model: string): Promise<DetectedPerson[]> => {
+export const detectPeopleInImage = async (imageBase64: string): Promise<DetectedPerson[]> => {
     if (!isApiKeyAvailable()) throw new Error("API Key is missing.");
     
     try {
@@ -54,10 +37,8 @@ export const detectPeopleInImage = async (imageBase64: string, model: string): P
 
         const prompt = "Analyze the provided image and identify all individuals. For each person found, provide their bounding box coordinates (x, y, width, height) normalized to the range [0, 1]. Also assign a unique ID like 'Person 1', 'Person 2', etc. Return this information in a JSON object.";
 
-        const correctedModel = getCorrectedModelName(model);
-
         const response = await ai.models.generateContent({
-            model: correctedModel,
+            model: 'gemini-2.5-flash',
             contents: { parts: [imagePart, { text: prompt }] },
             config: {
                 responseMimeType: "application/json",
@@ -151,12 +132,9 @@ export const generateVirtualTryOnImage = async (
   sourceImageBase64: string,
   sourceGarmentBox: BoundingBox,
   language: Language,
-  model: string,
 ): Promise<string> => {
   if (!isApiKeyAvailable()) throw new Error("API Key is missing.");
   
-  const correctedModel = getCorrectedModelName(model);
-
   try {
       const isSameImage = targetImageBase64 === sourceImageBase64;
       const prompt = buildVirtualTryOnPrompt(targetPersonBox, sourceGarmentBox, isSameImage, language);
@@ -180,10 +158,11 @@ export const generateVirtualTryOnImage = async (
         : [targetImagePart, sourceImagePart, { text: prompt }];
 
       const response = await ai.models.generateContent({
-        model: correctedModel, // Use the corrected model name
+        model: 'gemini-2.5-flash-image', // Hardcoded correct model
         contents: { parts },
         config: {
-          responseModalities: [Modality.IMAGE, Modality.TEXT],
+          // FIX: responseModalities must be an array with a single `Modality.IMAGE` element when generating images.
+          responseModalities: [Modality.IMAGE],
         },
       });
 

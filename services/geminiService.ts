@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BoundingBox, DetectedPerson, Language } from '../types';
 
@@ -141,7 +142,8 @@ export const generateVirtualTryOnImage = async (
     model: 'gemini-2.5-flash-image',
     contents: { parts },
     config: {
-      responseModalities: [Modality.IMAGE, Modality.TEXT],
+      // FIX: responseModalities must be an array with a single `Modality.IMAGE` element when generating images.
+      responseModalities: [Modality.IMAGE],
     },
   });
 

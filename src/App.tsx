@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppState, BoundingBox, DetectedPerson, HistoryItem, AppSettings } from './types';
+import { AppState, BoundingBox, DetectedPerson, HistoryItem } from './types';
 import { useLocalization } from './context/LocalizationContext';
-import { detectPeopleInImage, generateVirtualTryOnImage, isApiKeyAvailable, getCorrectedModelName } from './services/geminiService';
+import { detectPeopleInImage, generateVirtualTryOnImage } from './services/geminiService';
 import { blobToBase64, urlToBase64 } from './utils/fileUtils';
 import { checkImageQuality } from './utils/imageQuality';
 
@@ -9,12 +9,10 @@ import { ImageUploader } from './components/ImageUploader';
 import { PersonSelector } from './components/PersonSelector';
 import { ImageEditor } from './components/ImageEditor';
 import { History } from './components/History';
-import { Settings } from './components/Settings';
 import { saveData, loadData, clearDB } from './utils/db';
 
 
 const SESSION_STATE_KEY = 'virtualTryOnState';
-const SETTINGS_KEY = 'appSettings';
 const HISTORY_KEY = 'generationHistory';
 
 
@@ -43,33 +41,18 @@ const App: React.FC = () => {
     const [isFetchingUrl, setIsFetchingUrl] = useState(false);
     const [isPasting, setIsPasting] = useState(false);
     const [showRestoreNotification, setShowRestoreNotification] = useState(false);
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [isApiKeySet, setIsApiKeySet] = useState(false);
-    const [settings, setSettings] = useState<AppSettings>({
-      detectionModel: 'gemini-2.5-flash',
-      generationModel: 'gemini-2.5-flash-image',
-    });
     
     const { t, language, setLanguage } = useLocalization();
     
     useEffect(() => {
-        setIsApiKeySet(isApiKeyAvailable());
-
         const loadInitialData = async () => {
             const savedState = await loadData<any>(SESSION_STATE_KEY);
             const savedHistory = await loadData<HistoryItem[]>(HISTORY_KEY);
-            let savedSettings = await loadData<AppSettings>(SETTINGS_KEY);
-
+            
             if (savedHistory) {
                 setHistory(savedHistory);
             }
-            if (savedSettings) {
-                // Sanitize model names from old saved settings using the centralized corrector
-                savedSettings.generationModel = getCorrectedModelName(savedSettings.generationModel);
-                savedSettings.detectionModel = getCorrectedModelName(savedSettings.detectionModel);
-                setSettings(savedSettings);
-            }
-
+            
             if (savedState && savedState.appState) {
                  try {
                     setAppState(savedState.appState);
@@ -250,7 +233,7 @@ const App: React.FC = () => {
             if (appState === AppState.ANALYZING_TARGET_IMAGE && targetImage) {
                 setLoadingMessage(t('detectingPeople'));
                 try {
-                    const people = await detectPeopleInImage(targetImage, settings.detectionModel);
+                    const people = await detectPeopleInImage(targetImage);
                     if (people.length > 0) {
                         setDetectedPeople(people);
                         setAppState(AppState.TARGET_PERSON_CHOOSING);
@@ -267,7 +250,7 @@ const App: React.FC = () => {
             }
         };
         analyzeTargetImage();
-    }, [appState, targetImage, t, settings.detectionModel]);
+    }, [appState, targetImage, t]);
 
     useEffect(() => {
         const performVirtualTryOn = async () => {
@@ -281,8 +264,7 @@ const App: React.FC = () => {
                         selectedPerson.box,
                         sourceImage,
                         sourceGarmentBox,
-                        language,
-                        settings.generationModel
+                        language
                     );
                     setGeneratedImage(resultImage);
                     const newHistoryItem: HistoryItem = { id: new Date().toISOString(), generatedImage: resultImage };
@@ -302,7 +284,7 @@ const App: React.FC = () => {
             }
         };
         performVirtualTryOn();
-    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t, settings.generationModel, history]);
+    }, [appState, targetImage, selectedPerson, sourceImage, sourceGarmentBox, language, t, history]);
 
     const handleClearHistory = async () => {
         setHistory([]);
@@ -312,11 +294,6 @@ const App: React.FC = () => {
     const toggleLanguage = () => {
         setLanguage(language === 'en' ? 'ko' : 'en');
     };
-
-    const handleSaveSettings = async (newSettings: AppSettings) => {
-        setSettings(newSettings);
-        await saveData(SETTINGS_KEY, newSettings);
-    }
 
     const renderContent = () => {
         if (appState === AppState.GENERATING || loadingMessage) {
@@ -456,11 +433,6 @@ const App: React.FC = () => {
                         <button onClick={toggleLanguage} className="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors">
                             {language === 'en' ? '한국어' : 'English'}
                         </button>
-                         <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors" aria-label={t('settingsTitle')}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106A1.532 1.532 0 0111.49 3.17zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-                            </svg>
-                        </button>
                         {appState !== AppState.IDLE && (
                             <button onClick={handleReset} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold text-sm transition-colors duration-300">
                                 {t('startOverButton')}
@@ -470,8 +442,6 @@ const App: React.FC = () => {
                 </div>
             </header>
             
-            <Settings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onSave={handleSaveSettings} currentSettings={settings} />
-
             <main className="py-12 px-4 md:px-8">
                 <div className="max-w-7xl mx-auto flex flex-col items-center">
                     {renderContent()}
@@ -487,13 +457,7 @@ const App: React.FC = () => {
             )}
             
             <footer className="text-center py-6 text-gray-500 text-sm border-t border-gray-800">
-                 <div className="flex justify-center items-center gap-4">
-                    <p>{t('footerText')}</p>
-                    <div className="flex items-center gap-2" title={isApiKeySet ? t('apiKeyConnected') : t('apiKeyMissing')}>
-                        <span className={`h-2.5 w-2.5 rounded-full ${isApiKeySet ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                        <span>{isApiKeySet ? t('apiKeyConnected') : t('apiKeyMissing')}</span>
-                    </div>
-                </div>
+                 <p>{t('footerText')}</p>
             </footer>
         </div>
     );

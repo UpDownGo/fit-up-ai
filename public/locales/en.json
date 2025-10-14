@@ -52,11 +52,5 @@
   "clearHistoryButton": "Clear History",
   "footerText": "Powered by Gemini",
   "sessionRestoredNotification": "Your previous session has been restored.",
-  "closeButton": "Close",
-  "settingsTitle": "Settings",
-  "detectionModelLabel": "Person Detection Model",
-  "generationModelLabel": "Image Generation Model",
-  "saveSettingsButton": "Save Settings",
-  "apiKeyConnected": "API Key Connected",
-  "apiKeyMissing": "API Key Missing"
+  "closeButton": "Close"
 }
