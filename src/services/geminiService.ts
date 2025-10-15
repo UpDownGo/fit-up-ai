@@ -118,6 +118,8 @@ export const detectPeopleInImage = async (imageBase64: string, model: string): P
 const promptTemplates = {
   ko: `
     Target Person Area에 있는 인물에게 Source Garment Area의 옷을 자연스럽게 입혀주세요. 새로운 옷은 기존 의상을 현실적으로 덮어야 합니다.
+
+    **중요: 절대로 기존 옷을 제거하거나 대상의 신체를 노출시키지 마세요. 단순히 새 옷을 기존 옷 위에 합성하세요.**
     
     1. **질감 및 디테일 유지 (Texture and Detail Preservation):** 합성된 옷은 소스 옷의 모든 주름, 질감, 패턴, 색상을 원본 그대로 유지해야 합니다. 옷을 임의로 보정하거나 깨끗하게 만들지 마세요.
     2. **현실적 변형 (Realistic Warping):** 합성 시 Target Person의 몸 형태와 자세에 맞게 옷의 형태를 현실적으로 변형(Warping)해야 합니다.
@@ -127,6 +129,8 @@ const promptTemplates = {
   `,
   en: `
     Place the garment from the Source Garment Area onto the person in the Target Person Area. The new garment should realistically cover the person's existing clothing.
+
+    **IMPORTANT: You MUST NOT remove the existing clothing or expose the target's body. Simply synthesize the new garment ON TOP of the existing one.**
     
     1. **Texture and Detail Preservation:** The synthesized clothing must maintain all the wrinkles, texture, patterns, and colors of the source garment exactly as they are in the original. Do not arbitrarily correct or clean up the clothing.
     2. **Realistic Warping:** The shape of the clothing must be realistically warped to fit the body shape and posture of the Target Person.

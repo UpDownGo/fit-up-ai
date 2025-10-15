@@ -287,6 +287,7 @@ const App: React.FC = () => {
                         setAppState(AppState.ERROR);
                     }
                 } catch (err) {
+                    console.error("Person detection failed:", err);
                     const errorMessageKey = err instanceof Error ? err.message : 'detectionFailedError';
                     setError(t(errorMessageKey));
                     setAppState(AppState.ERROR);
@@ -321,8 +322,8 @@ const App: React.FC = () => {
 
                     setAppState(AppState.RESULT_READY);
                 } catch (err) {
-                    const errorMessageKey = err instanceof Error ? err.message : 'generationFailedError';
                     console.error("Virtual try-on failed:", err);
+                    const errorMessageKey = err instanceof Error ? err.message : 'generationFailedError';
                     setError(t(errorMessageKey));
                     setAppState(AppState.ERROR);
                 } finally {
