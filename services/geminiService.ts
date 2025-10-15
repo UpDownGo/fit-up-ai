@@ -1,8 +1,21 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BoundingBox, DetectedPerson, Language } from '../types';
 
-// FIX: Per guidelines, initialize GoogleGenAI with process.env.API_KEY directly and remove invalid import.meta.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Vercel/Vite uses `import.meta.env` for environment variables, while AI Studio uses `process.env`.
+// This logic safely gets the API key from the correct source depending on the environment.
+let apiKey: string | undefined;
+
+// @ts-ignore - Check for Vite's env object
+if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
+  // @ts-ignore
+  apiKey = import.meta.env.VITE_API_KEY;
+} else if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+  // Fallback for AI Studio or Node.js environments
+  apiKey = process.env.API_KEY;
+}
+
+const ai = new GoogleGenAI({ apiKey: apiKey || '' });
+
 
 const getMimeType = (base64: string) => {
     return base64.substring(base64.indexOf(":") + 1, base64.indexOf(";"));
