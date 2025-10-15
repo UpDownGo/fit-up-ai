@@ -1,23 +1,21 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { BoundingBox, DetectedPerson, Language } from '../types';
 
-// FIX: Per coding guidelines, API key must be obtained from VITE_ prefixed env var for client-side code.
-if (!import.meta.env.VITE_API_KEY) {
+// Per coding guidelines, API key must be obtained from process.env.API_KEY.
+if (!process.env.API_KEY) {
   // Log an error to the console for developers but do not throw a hard error that crashes the app.
-  console.error("VITE_API_KEY environment variable is not set. The application will not function correctly without it.");
+  console.error("API_KEY environment variable is not set. The application will not function correctly without it.");
 }
 
-// Initialize with the key or an empty string to prevent the app from crashing.
-// The functions that use `ai` will check for the key's availability.
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY || "" });
+// Initialize with the key from process.env as per the guidelines.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
  * Checks if the API key is provided in the environment variables.
  * @returns {boolean} True if the API key is available, false otherwise.
  */
 export const isApiKeyAvailable = (): boolean => {
-    // FIX: Check import.meta.env.VITE_API_KEY as per Vite guidelines.
-    return !!import.meta.env.VITE_API_KEY;
+    return !!process.env.API_KEY;
 };
 
 /**
@@ -33,33 +31,13 @@ const parseGeminiError = (e: unknown): string => {
       return e.message;
     }
 
-    try {
-      // API errors often have a message that is a JSON string.
-      // We parse it to get detailed error info.
-      let errorBody;
-      const message = e.message.trim();
-      if (message.startsWith('[')) {
-        errorBody = JSON.parse(message)[0];
-      } else if (message.startsWith('{')) {
-        errorBody = JSON.parse(message);
-      }
-
-      if (errorBody && errorBody.error) {
-        const { status, message: apiMessage } = errorBody.error;
-        if (status === 'RESOURCE_EXHAUSTED' || (apiMessage && apiMessage.includes('quota'))) {
-          return 'errorQuotaExceeded';
-        }
-        if (apiMessage && apiMessage.includes('API key not valid')) {
-          return 'errorInvalidApiKey';
-        }
-      }
-    } catch (parseError) {
-      // Not a JSON message, fall through to simple string checks
+    // Check for common API error messages
+    const message = e.message.toLowerCase();
+    if (message.includes('api key not valid')) {
+        return 'errorInvalidApiKey';
     }
-
-    // Simple string checks for non-JSON messages
-    if (e.message.includes('API key not valid')) {
-      return 'errorInvalidApiKey';
+    if (message.includes('quota') || message.includes('resource_exhausted')) {
+        return 'errorQuotaExceeded';
     }
   }
 
@@ -169,8 +147,6 @@ const buildVirtualTryOnPrompt = (targetPersonBox: BoundingBox, sourceGarmentBox:
 
     Your task is to perform a virtual try-on with the following instructions:
     ${coreInstruction}
-    
-    Return ONLY the final, edited image. Do not return any text.
     `;
 };
 
@@ -214,6 +190,10 @@ export const generateVirtualTryOnImage = async (
         },
       });
 
+      if (response.candidates?.[0]?.finishReason === 'SAFETY') {
+        throw new Error('errorSafetyBlock');
+      }
+
       const imagePart = response.candidates?.[0]?.content?.parts.find(
         (part) => part.inlineData
       );
@@ -223,11 +203,6 @@ export const generateVirtualTryOnImage = async (
         const mimeType = imagePart.inlineData.mimeType;
         return `data:${mimeType};base64,${base64ImageBytes}`;
       } else {
-        const blockReason = response.candidates?.[0]?.finishReason;
-        if (blockReason === 'SAFETY') {
-            throw new Error('errorSafetyBlock');
-        }
-        
         console.error("Full Gemini Response for debugging:", JSON.stringify(response, null, 2));
         throw new Error('errorGenerationNoImage');
       }

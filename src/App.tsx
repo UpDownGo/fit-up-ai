@@ -316,7 +316,6 @@ const App: React.FC = () => {
                     setGeneratedImage(resultImage);
                     const newHistoryItem: HistoryItem = { id: new Date().toISOString(), generatedImage: resultImage };
                     
-                    // Save the new item individually and update local state
                     await saveHistoryItem(newHistoryItem);
                     setHistory(prev => [newHistoryItem, ...prev]);
 
@@ -495,9 +494,9 @@ const App: React.FC = () => {
                         <button onClick={toggleLanguage} className="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors">
                             {language === 'en' ? '한국어' : 'English'}
                         </button>
-                        <button onClick={() => setIsSettingsOpen(true)} className="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors" aria-label={t('settingsButton')}>
+                        <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-md transition-colors" aria-label={t('settingsButton')}>
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0L8 5.45c-.5.19-1 .44-1.44.73l-2.07-.83c-1.5-.6-3.13.53-2.73 2.05l.79 2.89c.26.96.03 2.02-.63 2.74l-1.93 2.1c-1.22 1.33-.2 3.44 1.63 3.44h.01c.99 0 1.93-.31 2.68-.87l2.18-1.63c.51-.38 1.1-.63 1.72-.75l.48 2.22c.38 1.56 2.6 1.56 2.98 0l.48-2.22c.62.12 1.21.37 1.72.75l2.18 1.63c.75.56 1.69.87 2.68.87h.01c1.83 0 2.85-2.11 1.63-3.44l-1.93-2.1c-.66-.72-.89-1.78-.63-2.74l.79-2.89c.4-1.52-1.23-2.65-2.73-2.05l-2.07.83c-.44-.29-.94-.54-1.44-.73L11.49 3.17zm-1.49 8.33a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" clipRule="evenodd" />
+                                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0L8 5.45c-.5.19-1 .44-1.44 .73l-2.07-.83c-1.5-.6-3.13.53-2.73 2.05l.79 2.89c.26.96.03 2.02-.63 2.74l-1.93 2.1c-1.22 1.33-.2 3.44 1.63 3.44h.01c.99 0 1.93-.31 2.68-.87l2.18-1.63c.51-.38 1.1-.63 1.72-.75l.48 2.22c.38 1.56 2.6 1.56 2.98 0l.48-2.22c.62.12 1.21.37 1.72.75l2.18 1.63c.75.56 1.69.87 2.68.87h.01c1.83 0 2.85-2.11 1.63-3.44l-1.93-2.1c-.66-.72-.89-1.78-.63-2.74l.79-2.89c.4-1.52-1.23-2.65-2.73-2.05l-2.07.83c-.44-.29-.94-.54-1.44-.73L11.49 3.17zm-1.49 8.33a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" clipRule="evenodd" />
                             </svg>
                         </button>
                         {appState !== AppState.IDLE && (
@@ -535,12 +534,12 @@ const App: React.FC = () => {
             
             <footer className="text-center py-6 text-gray-500 text-sm border-t border-gray-800">
                  <p>{t('footerText')}</p>
-                 <p className={`text-xs mt-1 ${isApiKeySet ? 'text-green-400' : 'text-red-400'}`}>
+                 <p className={`text-xs mt-1 ${isApiKeySet ? 'text-green-500' : 'text-red-500'}`}>
                     {isApiKeySet ? t('apiKeyConnected') : t('apiKeyMissing')}
                  </p>
             </footer>
-
-            <Settings
+            
+            <Settings 
                 isOpen={isSettingsOpen}
                 onClose={() => setIsSettingsOpen(false)}
                 onSave={handleSaveSettings}

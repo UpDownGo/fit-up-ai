@@ -13,90 +13,109 @@ interface ImageEditorProps {
 
 type DragState = 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | null;
 
-const HANDLE_SIZE = 12;
+const HANDLE_SIZE = 16; // Larger for easier touch
+const MIN_BOX_SIZE = 20;
 
 export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, boxColor, instruction, existingBox = null, garmentBox = null }) => {
   const { t } = useLocalization();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  
+  // General state
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   // Desktop drawing state
   const [isDrawing, setIsDrawing] = useState(false);
-  const [box, setBox] = useState<BoundingBox | null>(null);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
-
+  const [desktopBox, setDesktopBox] = useState<BoundingBox | null>(null);
+  
   // Mobile adjustment state
   const [adjustableBox, setAdjustableBox] = useState<BoundingBox | null>(null);
   const [dragState, setDragState] = useState<DragState>(null);
   const [touchStart, setTouchStart] = useState<{ x: number, y: number } | null>(null);
-  const [isBoxInitialized, setIsBoxInitialized] = useState(false);
 
   useEffect(() => {
-    // Reset initialization state when the source image changes
-    setIsBoxInitialized(false);
-  }, [imageSrc]);
+    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
+
+  // Effect to initialize or update the adjustable box for mobile devices
+  useEffect(() => {
+    if (!isTouchDevice || canvasSize.width === 0) {
+      setAdjustableBox(null);
+      return;
+    }
+
+    if (garmentBox) {
+        setAdjustableBox({
+            x: garmentBox.x * canvasSize.width,
+            y: garmentBox.y * canvasSize.height,
+            width: garmentBox.width * canvasSize.width,
+            height: garmentBox.height * canvasSize.height,
+        });
+    } else if (!adjustableBox) { // Only set default if it doesn't exist
+        const defaultWidth = canvasSize.width * 0.5;
+        const defaultHeight = canvasSize.height * 0.5;
+        setAdjustableBox({
+            x: (canvasSize.width - defaultWidth) / 2,
+            y: (canvasSize.height - defaultHeight) / 2,
+            width: defaultWidth,
+            height: defaultHeight,
+        });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTouchDevice, canvasSize.width, canvasSize.height]);
+
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
+    const container = containerRef.current;
+    if (!canvas || !context || !container) return;
+
     const image = new Image();
     image.src = imageSrc;
 
     image.onload = () => {
-      if (!canvas || !context) return;
-      const container = containerRef.current;
-      if (!container) return;
-
       const containerWidth = container.clientWidth;
+      if (containerWidth === 0) return;
+
       const imageAspectRatio = image.naturalWidth / image.naturalHeight;
       const canvasHeight = containerWidth / imageAspectRatio;
       
       canvas.width = containerWidth;
       canvas.height = canvasHeight;
-
-      // Initialize the adjustable box inside onload to avoid race conditions with canvas sizing
-      if (isTouchDevice && !isBoxInitialized) {
-        if (garmentBox) {
-            setAdjustableBox({
-                x: garmentBox.x * canvas.width,
-                y: garmentBox.y * canvas.height,
-                width: garmentBox.width * canvas.width,
-                height: garmentBox.height * canvas.height,
-            });
-        } else {
-            const defaultWidth = canvas.width * 0.5;
-            const defaultHeight = canvas.height * 0.5;
-            setAdjustableBox({
-                x: (canvas.width - defaultWidth) / 2,
-                y: (canvas.height - defaultHeight) / 2,
-                width: defaultWidth,
-                height: defaultHeight,
-            });
-        }
-        setIsBoxInitialized(true);
+      
+      if (canvasSize.width !== canvas.width || canvasSize.height !== canvas.height) {
+        setCanvasSize({ width: canvas.width, height: canvas.height });
       }
 
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
       const drawStyledBox = (b: BoundingBox, color: string, lineWidth: number, isAdjustable: boolean = false) => {
+        context.save();
+        
+        if (isAdjustable && dragState) {
+           context.setLineDash([6, 4]); // Dashed line while manipulating
+        }
         context.strokeStyle = color;
         context.lineWidth = lineWidth;
         context.strokeRect(b.x, b.y, b.width, b.height);
+        context.restore(); // Restore to solid line
 
         if (isAdjustable) {
-          context.fillStyle = 'white';
-          context.strokeStyle = 'black';
-          context.lineWidth = 1;
+          context.strokeStyle = 'rgba(0,0,0,0.5)';
+          context.lineWidth = 2;
 
           const handles = [
-            { x: b.x, y: b.y }, // tl
-            { x: b.x + b.width, y: b.y }, // tr
-            { x: b.x, y: b.y + b.height }, // bl
-            { x: b.x + b.width, y: b.y + b.height }, // br
+            { x: b.x, y: b.y, state: 'resize-tl' as DragState }, // tl
+            { x: b.x + b.width, y: b.y, state: 'resize-tr' as DragState }, // tr
+            { x: b.x, y: b.y + b.height, state: 'resize-bl' as DragState }, // bl
+            { x: b.x + b.width, y: b.y + b.height, state: 'resize-br' as DragState }, // br
           ];
 
           handles.forEach(handle => {
+            context.fillStyle = (dragState === handle.state) ? 'rgba(59, 130, 246, 1)' : 'white';
             context.beginPath();
             context.arc(handle.x, handle.y, HANDLE_SIZE / 2, 0, 2 * Math.PI);
             context.fill();
@@ -114,29 +133,29 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
         }, 'rgba(0, 128, 255, 0.7)', 3);
       }
 
-      if (isTouchDevice && adjustableBox) {
-        drawStyledBox(adjustableBox, boxColor, 3, true);
-      } else if (!isTouchDevice && garmentBox && !isDrawing) {
-        drawStyledBox({
-          x: garmentBox.x * canvas.width,
-          y: garmentBox.y * canvas.height,
-          width: garmentBox.width * canvas.width,
-          height: garmentBox.height * canvas.height,
-        }, boxColor, 3);
-      }
-
-      if (box && isDrawing) {
-        drawStyledBox(box, boxColor, 3);
+      if (isTouchDevice) {
+        if (adjustableBox) {
+          drawStyledBox(adjustableBox, boxColor, 3, true);
+        }
+      } else {
+         if (garmentBox && !isDrawing) {
+            drawStyledBox({
+              x: garmentBox.x * canvas.width,
+              y: garmentBox.y * canvas.height,
+              width: garmentBox.width * canvas.width,
+              height: garmentBox.height * canvas.height,
+            }, boxColor, 3);
+          }
+          if (desktopBox && isDrawing) {
+            drawStyledBox(desktopBox, boxColor, 3);
+          }
       }
     };
-  }, [imageSrc, box, boxColor, existingBox, garmentBox, isDrawing, adjustableBox, isTouchDevice, isBoxInitialized]);
+  }, [imageSrc, desktopBox, boxColor, existingBox, garmentBox, isDrawing, adjustableBox, isTouchDevice, canvasSize, dragState]);
 
   useEffect(() => {
     draw();
-    const handleResize = () => {
-      setIsBoxInitialized(false); // Re-initialize box on resize
-      draw();
-    };
+    const handleResize = () => draw();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [draw]);
@@ -155,12 +174,12 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
     const pos = getCanvasPos(e.clientX, e.clientY);
     setIsDrawing(true);
     setStartPoint(pos);
-    setBox({ ...pos, width: 0, height: 0 });
+    setDesktopBox({ ...pos, width: 0, height: 0 });
   };
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (isTouchDevice || !isDrawing || !startPoint) return;
     const pos = getCanvasPos(e.clientX, e.clientY);
-    setBox({
+    setDesktopBox({
       x: Math.min(pos.x, startPoint.x),
       y: Math.min(pos.y, startPoint.y),
       width: Math.abs(pos.x - startPoint.x),
@@ -170,20 +189,20 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
   const handleMouseUp = () => {
     if (isTouchDevice || !isDrawing) return;
     setIsDrawing(false);
-    if (!box || !canvasRef.current || box.width < 10 || box.height < 10) {
-      setBox(null); return;
+    if (!desktopBox || !canvasRef.current || desktopBox.width < 10 || desktopBox.height < 10) {
+      setDesktopBox(null); return;
     }
     const canvas = canvasRef.current;
     const normalizedBox: BoundingBox = {
-      x: box.x / canvas.width, y: box.y / canvas.height,
-      width: box.width / canvas.width, height: box.height / canvas.height,
+      x: desktopBox.x / canvas.width, y: desktopBox.y / canvas.height,
+      width: desktopBox.width / canvas.width, height: desktopBox.height / canvas.height,
     };
-    setBox(null);
+    setDesktopBox(null);
     onBoxDrawn(normalizedBox);
   };
 
   // --- Mobile Touch Handlers ---
-  const getDragState = (pos: { x: number, y: number }, b: BoundingBox): DragState => {
+  const getDragStateForPos = (pos: { x: number, y: number }, b: BoundingBox): DragState => {
       const isNear = (p1: number, p2: number) => Math.abs(p1 - p2) < HANDLE_SIZE * 1.5; // Increased touch area
       if (isNear(pos.x, b.x) && isNear(pos.y, b.y)) return 'resize-tl';
       if (isNear(pos.x, b.x + b.width) && isNear(pos.y, b.y)) return 'resize-tr';
@@ -195,7 +214,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
       if (!adjustableBox) return;
       const pos = getCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
-      const currentDragState = getDragState(pos, adjustableBox);
+      const currentDragState = getDragStateForPos(pos, adjustableBox);
       if (currentDragState) {
           e.preventDefault();
           setDragState(currentDragState);
@@ -205,41 +224,57 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
       if (!dragState || !touchStart || !adjustableBox) return;
       e.preventDefault();
+      
       const pos = getCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
-      const dx = pos.x - touchStart.x;
-      const dy = pos.y - touchStart.y;
+      const clampedPos = {
+          x: Math.max(0, Math.min(pos.x, canvasSize.width)),
+          y: Math.max(0, Math.min(pos.y, canvasSize.height)),
+      };
       
-      let { x, y, width, height } = adjustableBox;
-      switch (dragState) {
-          case 'move':
-              x += dx; y += dy;
-              break;
-          case 'resize-tl':
-              x += dx; y += dy; width -= dx; height -= dy;
-              break;
-          case 'resize-tr':
-              width += dx; y += dy; height -= dy;
-              break;
-          case 'resize-bl':
-              x += dx; width -= dx; height += dy;
-              break;
-          case 'resize-br':
-              width += dx; height += dy;
-              break;
-      }
-      
-      // Normalize box if width/height went negative (corner dragged over opposite side)
-      if (width < 0) {
-          x = x + width;
-          width = Math.abs(width);
-      }
-      if (height < 0) {
-          y = y + height;
-          height = Math.abs(height);
-      }
+      let nextBox = { ...adjustableBox };
+      const dx = clampedPos.x - touchStart.x;
+      const dy = clampedPos.y - touchStart.y;
 
-      setAdjustableBox({ x, y, width, height });
-      setTouchStart(pos);
+      if (dragState === 'move') {
+          nextBox.x = Math.max(0, Math.min(nextBox.x + dx, canvasSize.width - nextBox.width));
+          nextBox.y = Math.max(0, Math.min(nextBox.y + dy, canvasSize.height - nextBox.height));
+      } else {
+          // Handle Resizing
+          let { x, y, width, height } = nextBox;
+          
+          switch (dragState) {
+              case 'resize-tl':
+                  x += dx; y += dy;
+                  width -= dx; height -= dy;
+                  break;
+              case 'resize-tr':
+                  width += dx;
+                  y += dy; height -= dy;
+                  break;
+              case 'resize-bl':
+                  x += dx; width -= dx;
+                  height += dy;
+                  break;
+              case 'resize-br':
+                  width += dx; height += dy;
+                  break;
+          }
+
+          // Handle inversion (flipping the box) and minimum size
+          if (width < MIN_BOX_SIZE) {
+            if (dragState === 'resize-tl' || dragState === 'resize-bl') x = nextBox.x + nextBox.width - MIN_BOX_SIZE;
+            width = MIN_BOX_SIZE;
+          }
+          if (height < MIN_BOX_SIZE) {
+            if (dragState === 'resize-tl' || dragState === 'resize-tr') y = nextBox.y + nextBox.height - MIN_BOX_SIZE;
+            height = MIN_BOX_SIZE;
+          }
+
+          nextBox = { x, y, width, height };
+      }
+      
+      setAdjustableBox(nextBox);
+      setTouchStart(clampedPos);
   };
   const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
       e.preventDefault();
@@ -248,7 +283,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
   };
 
   const handleConfirmSelection = () => {
-    if (!adjustableBox || !canvasRef.current) return;
+    if (!adjustableBox || !canvasRef.current || canvasRef.current.width === 0) return;
     const canvas = canvasRef.current;
     const normalizedBox: BoundingBox = {
         x: adjustableBox.x / canvas.width,
@@ -261,7 +296,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
 
   return (
     <div className="w-full max-w-2xl mx-auto flex flex-col items-center gap-4">
-      <h2 className="text-2xl font-bold text-center text-indigo-300">{instruction}</h2>
+      <h2 className="text-2xl font-bold text-center text-indigo-300">{isTouchDevice ? t('step5InstructionMobile') : instruction}</h2>
       <div ref={containerRef} className="w-full touch-none">
         <canvas
           ref={canvasRef}
@@ -273,7 +308,8 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
       {isTouchDevice && (
          <button 
             onClick={handleConfirmSelection}
-            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold transition-colors duration-300"
+            disabled={!adjustableBox}
+            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
         >
             {t('confirmSelectionButton')}
         </button>

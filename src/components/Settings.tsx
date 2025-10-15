@@ -15,7 +15,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onSave, cur
 
   useEffect(() => {
     setLocalSettings(currentSettings);
-  }, [currentSettings]);
+  }, [currentSettings, isOpen]);
 
   if (!isOpen) {
     return null;
@@ -33,8 +33,13 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onSave, cur
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="p-6 border-b border-gray-700">
+        <div className="p-6 border-b border-gray-700 flex justify-between items-center">
           <h2 id="settings-title" className="text-2xl font-bold text-white">{t('settingsTitle')}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white" aria-label={t('closeButton')}>
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
         <div className="p-6 space-y-6">
           <div>
@@ -50,7 +55,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onSave, cur
               <option value="gemini-2.5-flash">gemini-2.5-flash</option>
               <option value="gemini-2.5-pro">gemini-2.5-pro</option>
               <option value="gemini-flash-latest">gemini-flash-latest</option>
-              <option value="gemini-flash-lite-latest">gemini-flash-lite-latest</option>
             </select>
           </div>
           <div>
@@ -64,8 +68,6 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, onSave, cur
               className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
             >
               <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
-              <option value="gemini-2.0-flash-exp-image">gemini-2.0-flash-exp-image</option>
-              <option value="gemini-2.5-flash-preview-image">gemini-2.5-flash-preview-image</option>
             </select>
           </div>
         </div>
