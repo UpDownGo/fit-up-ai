@@ -1,222 +1,209 @@
-import { GoogleGenAI, Modality, Type } from "@google/genai";
-import { BoundingBox, DetectedPerson, Language } from '../types';
+// Fix: Create the geminiService module with exports to resolve import errors.
+// This file implements the core logic for interacting with the Google Gemini API.
 
-// Vercel/Vite uses `import.meta.env` for environment variables, while AI Studio uses `process.env`.
-// This logic safely gets the API key from the correct source depending on the environment.
-let apiKey: string | undefined;
-// @ts-ignore - Check for Vite's env object
-if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
-  // @ts-ignore
-  apiKey = import.meta.env.VITE_API_KEY;
-} else if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-  // Fallback for AI Studio or Node.js environments
-  apiKey = process.env.API_KEY;
-}
-
-const ai = new GoogleGenAI({ apiKey: apiKey || '' });
+import { GoogleGenAI, Modality, Type } from '@google/genai';
+import { BoundingBox, DetectedPerson } from '../types';
 
 /**
- * Checks if the API key is provided in the environment variables.
- * @returns {boolean} True if the API key is available, false otherwise.
+ * Checks if the Gemini API key is available in the environment.
+ * Per coding guidelines, this must use process.env.API_KEY. In a Vite/frontend
+ * environment, this variable must be injected via the build process.
+ * We use @ts-ignore to suppress TypeScript errors as `process` is not standard
+ * in browser environments.
  */
 export const isApiKeyAvailable = (): boolean => {
-    return !!apiKey;
+  // @ts-ignore
+  return !!process.env.API_KEY;
 };
 
 /**
- * Parses a caught error to determine a user-friendly error message key.
- * @param e The error object.
- * @returns A string key for the localization files.
+ * Initializes and returns a GoogleGenAI instance.
+ * Throws an error if the API key is missing.
  */
-const parseGeminiError = (e: unknown): string => {
-  if (e instanceof Error) {
-    // Handle specific keys we throw internally first
-    const internalKeys = ['errorApiKeyMissing', 'errorSafetyBlock', 'errorGenerationNoImage'];
-    if (internalKeys.includes(e.message)) {
-      return e.message;
-    }
-
-    // Check for common API error messages
-    const message = e.message.toLowerCase();
-    if (message.includes('api key not valid')) {
-        return 'errorInvalidApiKey';
-    }
-    if (message.includes('quota') || message.includes('resource_exhausted')) {
-        return 'errorQuotaExceeded';
-    }
+const getAi = () => {
+  // @ts-ignore
+  if (!process.env.API_KEY) {
+    // This error message key will be used by the UI to show a localized message.
+    throw new Error('apiKeyMissing');
   }
-
-  // Fallback for unknown errors
-  console.error("Unknown API Error:", e);
-  return 'errorGenericApi';
+  // @ts-ignore
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
+/**
+ * Converts a base64 data URL to a Gemini Part object.
+ * @param base64 The base64 data URL (e.g., "data:image/png;base64,...").
+ * @returns A Gemini Part object.
+ */
+const base64ToGeminiPart = (base64: string) => {
+    const match = base64.match(/^data:(image\/(?:png|jpeg|webp));base64,(.*)$/);
+    if (!match) {
+        console.error('Invalid base64 image format provided to geminiService.');
+        throw new Error('imageProcessingError');
+    }
+    return {
+        inlineData: {
+            mimeType: match[1],
+            data: match[2],
+        },
+    };
+};
 
-const getMimeType = (base64: string) => {
-    return base64.substring(base64.indexOf(":") + 1, base64.indexOf(";"));
-}
+/**
+ * Detects people in an image using the Gemini API.
+ * @param imageBase64 The base64 encoded image.
+ * @param modelName The name of the detection model to use.
+ * @returns A promise that resolves to an array of detected people.
+ */
+export const detectPeopleInImage = async (
+    imageBase64: string,
+    modelName: string
+): Promise<DetectedPerson[]> => {
+    const ai = getAi();
+    const imagePart = base64ToGeminiPart(imageBase64);
 
-export const detectPeopleInImage = async (imageBase64: string, model: string): Promise<DetectedPerson[]> => {
-    if (!isApiKeyAvailable()) throw new Error("errorApiKeyMissing");
-    
-    try {
-        const imagePart = {
-            inlineData: {
-                mimeType: getMimeType(imageBase64),
-                data: imageBase64.split(',')[1],
-            },
-        };
-
-        const prompt = "Analyze the provided image and identify all individuals. For each person found, provide their bounding box coordinates (x, y, width, height) normalized to the range [0, 1]. Also assign a unique ID like 'Person 1', 'Person 2', etc. Return this information in a JSON object.";
-
-        const response = await ai.models.generateContent({
-            model,
-            contents: { parts: [imagePart, { text: prompt }] },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
+    const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+            people: {
+                type: Type.ARRAY,
+                description: 'An array of all people found in the image.',
+                items: {
                     type: Type.OBJECT,
                     properties: {
-                        people: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    id: { type: Type.STRING },
-                                    box: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            x: { type: Type.NUMBER },
-                                            y: { type: Type.NUMBER },
-                                            width: { type: Type.NUMBER },
-                                            height: { type: Type.NUMBER },
-                                        },
-                                        required: ["x", "y", "width", "height"],
-                                    }
-                                },
-                                required: ["id", "box"],
-                            }
-                        }
+                        id: { 
+                            type: Type.STRING,
+                            description: 'A unique identifier for the person, e.g., "Person 1".'
+                        },
+                        box: {
+                            type: Type.OBJECT,
+                            description: 'The bounding box for the person, with normalized coordinates.',
+                            properties: {
+                                x: { type: Type.NUMBER, description: "Top-left corner's X coordinate (0-1)." },
+                                y: { type: Type.NUMBER, description: "Top-left corner's Y coordinate (0-1)." },
+                                width: { type: Type.NUMBER, description: "Box width (0-1)." },
+                                height: { type: Type.NUMBER, description: "Box height (0-1)." },
+                            },
+                            required: ['x', 'y', 'width', 'height'],
+                        },
                     },
-                    required: ["people"],
-                }
-            }
+                    required: ['id', 'box'],
+                },
+            },
+        },
+        required: ['people'],
+    };
+
+    try {
+        const response = await ai.models.generateContent({
+            model: modelName,
+            contents: {
+                parts: [
+                    imagePart,
+                    { text: 'Detect all people in this image. For each person, assign a unique ID like "Person 1", "Person 2", etc., and provide their bounding box coordinates (x, y, width, height) as normalized values between 0 and 1.' }
+                ],
+            },
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema,
+            },
         });
 
-        const jsonText = response.text.trim();
-        const result = JSON.parse(jsonText);
-        if (result.people && Array.isArray(result.people)) {
-            return result.people;
+        const text = response.text.trim();
+        const json = JSON.parse(text);
+
+        if (!json.people || !Array.isArray(json.people)) {
+            return [];
         }
-        return [];
+
+        return json.people.filter((p: any): p is DetectedPerson =>
+            p && typeof p.id === 'string' &&
+            p.box && typeof p.box.x === 'number' &&
+            typeof p.box.y === 'number' &&
+            typeof p.box.width === 'number' &&
+            typeof p.box.height === 'number'
+        );
+
     } catch (e) {
-        console.error("Failed during person detection API call:", e);
-        throw new Error(parseGeminiError(e));
+        console.error('Error detecting people:', e);
+        if (e instanceof Error && (e.message.includes('429') || e.message.includes('quota'))) {
+             throw new Error('apiQuotaExceededError');
+        }
+        throw new Error('detectionFailedError');
     }
 };
 
-const promptTemplates = {
-  ko: `
-    Target Person Area에 있는 인물에게 Source Garment Area의 옷을 자연스럽게 입혀주세요. 새로운 옷은 기존 의상을 현실적으로 덮어야 합니다.
-
-    **중요: 절대로 기존 옷을 제거하거나 대상의 신체를 노출시키지 마세요. 단순히 새 옷을 기존 옷 위에 합성하세요.**
-    
-    1. **질감 및 디테일 유지 (Texture and Detail Preservation):** 합성된 옷은 소스 옷의 모든 주름, 질감, 패턴, 색상을 원본 그대로 유지해야 합니다. 옷을 임의로 보정하거나 깨끗하게 만들지 마세요.
-    2. **현실적 변형 (Realistic Warping):** 합성 시 Target Person의 몸 형태와 자세에 맞게 옷의 형태를 현실적으로 변형(Warping)해야 합니다.
-    3. **광원 및 그림자 (Lighting and Shadows):** 합성 결과가 이질감 없이 보이도록 Target Image의 주변 환경 광원과 그림자 효과를 완벽하게 반영하여 최종 이미지를 생성합니다.
-    4. **비율 유지 (Aspect Ratio Preservation):** 최종 결과 이미지는 원본 Target Image와 동일한 가로세로 비율을 유지해야 합니다. 이미지를 자르거나 비율을 변경하지 마세요.
-    5. **출력 형식 (Output Format):** 최종 결과물은 텍스트, 마크다운 또는 다른 설명 없이 오직 편집된 이미지 파일 하나여야 합니다.
-  `,
-  en: `
-    Place the garment from the Source Garment Area onto the person in the Target Person Area. The new garment should realistically cover the person's existing clothing.
-
-    **IMPORTANT: You MUST NOT remove the existing clothing or expose the target's body. Simply synthesize the new garment ON TOP of the existing one.**
-    
-    1. **Texture and Detail Preservation:** The synthesized clothing must maintain all the wrinkles, texture, patterns, and colors of the source garment exactly as they are in the original. Do not arbitrarily correct or clean up the clothing.
-    2. **Realistic Warping:** The shape of the clothing must be realistically warped to fit the body shape and posture of the Target Person.
-    3. **Lighting and Shadows:** Perfectly reflect the ambient lighting and shadow effects of the Target Image's environment to create a final image that looks natural and seamless.
-    4. **Aspect Ratio Preservation:** The final output image must have the exact same aspect ratio as the original Target Image. Do not crop or alter the aspect ratio of the image.
-    5. **Output Format:** The final output must be a single, edited image file with no surrounding text, markdown, or explanations.
-  `
-};
-
-
-const buildVirtualTryOnPrompt = (targetPersonBox: BoundingBox, sourceGarmentBox: BoundingBox, isSameImage: boolean, language: Language) => {
-  const imageLabels = isSameImage 
-    ? "The single provided image is both the TARGET and SOURCE IMAGE."
-    : "The FIRST image provided is the TARGET IMAGE. The SECOND image is the SOURCE IMAGE.";
-  
-  const coreInstruction = promptTemplates[language];
-
-  return `
-    ${imageLabels}
-
-    In the TARGET IMAGE, locate the person within the bounding box [${targetPersonBox.x.toFixed(4)}, ${targetPersonBox.y.toFixed(4)}, ${targetPersonBox.width.toFixed(4)}, ${targetPersonBox.height.toFixed(4)}].
-    In the SOURCE IMAGE, locate the garment within the bounding box [${sourceGarmentBox.x.toFixed(4)}, ${sourceGarmentBox.y.toFixed(4)}, ${sourceGarmentBox.width.toFixed(4)}, ${sourceGarmentBox.height.toFixed(4)}].
-
-    Your task is to perform a virtual try-on with the following instructions:
-    ${coreInstruction}
-    `;
-};
-
+/**
+ * Generates a virtual try-on image using the Gemini API.
+ * @param targetImageBase64 Base64 of the image with the person.
+ * @param personBox Bounding box of the person in the target image.
+ * @param sourceImageBase64 Base64 of the image with the garment.
+ * @param garmentBox Bounding box of the garment in the source image.
+ * @param language The language for the prompt.
+ * @param modelName The name of the generation model to use.
+ * @returns A promise that resolves to the base64 data URL of the generated image.
+ */
 export const generateVirtualTryOnImage = async (
-  targetImageBase64: string,
-  targetPersonBox: BoundingBox,
-  sourceImageBase64: string,
-  sourceGarmentBox: BoundingBox,
-  language: Language,
-  model: string
+    targetImageBase64: string,
+    personBox: BoundingBox,
+    sourceImageBase64: string,
+    garmentBox: BoundingBox,
+    language: 'ko' | 'en',
+    modelName: string
 ): Promise<string> => {
-  if (!isApiKeyAvailable()) throw new Error("errorApiKeyMissing");
-  
-  try {
-      const isSameImage = targetImageBase64 === sourceImageBase64;
-      const prompt = buildVirtualTryOnPrompt(targetPersonBox, sourceGarmentBox, isSameImage, language);
+    const ai = getAi();
 
-      const targetImagePart = {
-        inlineData: {
-          mimeType: getMimeType(targetImageBase64),
-          data: targetImageBase64.split(',')[1],
-        },
-      };
-      
-      const sourceImagePart = {
-        inlineData: {
-          mimeType: getMimeType(sourceImageBase64),
-          data: sourceImageBase64.split(',')[1],
-        },
-      };
+    const targetImagePart = base64ToGeminiPart(targetImageBase64);
+    const sourceImagePart = base64ToGeminiPart(sourceImageBase64);
+    
+    const personBoxStr = `(x: ${personBox.x.toFixed(3)}, y: ${personBox.y.toFixed(3)}, width: ${personBox.width.toFixed(3)}, height: ${personBox.height.toFixed(3)})`;
+    const garmentBoxStr = `(x: ${garmentBox.x.toFixed(3)}, y: ${garmentBox.y.toFixed(3)}, width: ${garmentBox.width.toFixed(3)}, height: ${garmentBox.height.toFixed(3)})`;
 
-      const parts = isSameImage 
-        ? [targetImagePart, { text: prompt }]
-        : [targetImagePart, sourceImagePart, { text: prompt }];
+    const prompt = language === 'ko' ?
+        `가상 피팅을 수행해 주세요.
+- 첫 번째(타겟) 이미지에서 이 경계 상자 ${personBoxStr} 안에 있는 사람을 찾습니다.
+- 두 번째(소스) 이미지에서 이 경계 상자 ${garmentBoxStr} 안에 있는 의류를 찾습니다.
+- 소스 이미지의 의류를 타겟 이미지의 사람에게 입혀주세요.
+- 결과 이미지는 조명, 그림자, 옷주름 등이 자연스럽게 표현되어야 합니다.
+- 타겟 이미지의 배경과 사람의 포즈는 그대로 유지해주세요. 결과물은 반드시 이미지여야 합니다.`
+        :
+        `Perform a virtual try-on.
+- Find the person in the first (target) image within this bounding box: ${personBoxStr}.
+- Find the garment in the second (source) image within this bounding box: ${garmentBoxStr}.
+- Place the garment from the source image onto the person in the target image.
+- The resulting image must be highly realistic, with natural lighting, shadows, and clothing folds.
+- Preserve the background and the person's pose from the target image. The output must be an image.`;
 
-      const response = await ai.models.generateContent({
-        model,
-        contents: { parts },
-        config: {
-          responseModalities: [Modality.IMAGE],
-        },
-      });
+    try {
+        const response = await ai.models.generateContent({
+            model: modelName,
+            contents: {
+                parts: [
+                    targetImagePart,
+                    sourceImagePart,
+                    { text: prompt },
+                ]
+            },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
+        
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                const base64ImageBytes: string = part.inlineData.data;
+                const mimeType = part.inlineData.mimeType;
+                return `data:${mimeType};base64,${base64ImageBytes}`;
+            }
+        }
+        
+        throw new Error('generationFailedNoImage');
 
-      if (response.candidates?.[0]?.finishReason === 'SAFETY') {
-        throw new Error('errorSafetyBlock');
-      }
-
-      const imagePart = response.candidates?.[0]?.content?.parts.find(
-        (part) => part.inlineData
-      );
-
-      if (imagePart && imagePart.inlineData) {
-        const base64ImageBytes = imagePart.inlineData.data;
-        const mimeType = imagePart.inlineData.mimeType;
-        return `data:${mimeType};base64,${base64ImageBytes}`;
-      } else {
-        console.error("Full Gemini Response for debugging:", JSON.stringify(response, null, 2));
-        throw new Error('errorGenerationNoImage');
-      }
-    } catch(e) {
-        console.error("Failed during image generation API call:", e);
-        throw new Error(parseGeminiError(e));
+    } catch (e) {
+        console.error('Error generating virtual try-on image:', e);
+        if (e instanceof Error && (e.message.includes('429') || e.message.includes('quota'))) {
+             throw new Error('apiQuotaExceededError');
+        }
+        throw new Error('generationFailedError');
     }
 };

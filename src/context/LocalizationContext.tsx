@@ -20,9 +20,16 @@ export const LocalizationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const fetchTranslations = async () => {
       try {
         setIsLoaded(false);
-        // Since both Vercel and AI Studio now serve from a predictable structure,
-        // we can reliably use the absolute path from the root.
-        const path = `/locales/${language}.json`;
+        
+        // @ts-ignore - Vite specific env variable
+        const isViteEnv = typeof import.meta !== 'undefined' && typeof import.meta.env !== 'undefined' && import.meta.env.MODE;
+        
+        // Vercel/Vite serves the `public` dir at the root ('/').
+        // AI Studio serves the project file structure as-is, so we need to include `public` in the path.
+        const path = isViteEnv
+            ? `/locales/${language}.json`
+            : `/public/locales/${language}.json`;
+
         const response = await fetch(path);
         if (!response.ok) {
             console.error(`Failed to load translations for ${language} from ${path}. Status: ${response.status}`);
