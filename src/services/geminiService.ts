@@ -214,8 +214,8 @@ export const generateVirtualTryOnImage = async (
         const parts = response.candidates?.[0]?.content?.parts;
         if (parts) {
             for (const part of parts) {
-                if (part.inlineData) {
-                    const base64ImageBytes: string = part.inlineData.data;
+                if (part.inlineData?.data && part.inlineData?.mimeType) {
+                    const base64ImageBytes = part.inlineData.data;
                     const mimeType = part.inlineData.mimeType;
                     return `data:${mimeType};base64,${base64ImageBytes}`;
                 }
