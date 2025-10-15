@@ -20,15 +20,19 @@ export const LocalizationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const fetchTranslations = async () => {
       try {
         setIsLoaded(false);
-        const response = await fetch(`/locales/${language}.json`);
+        // Since both Vercel and AI Studio now serve from a predictable structure,
+        // we can reliably use the absolute path from the root.
+        const path = `/locales/${language}.json`;
+        const response = await fetch(path);
         if (!response.ok) {
+            console.error(`Failed to load translations for ${language} from ${path}. Status: ${response.status}`);
             throw new Error(`Failed to load translations for ${language}`);
         }
         const data: Translations = await response.json();
         setTranslations(data);
       } catch (error) {
         console.error("Translation loading error:", error);
-        // Fallback to an empty object
+        // Fallback to an empty object so the app can still render something
         setTranslations({});
       } finally {
         setIsLoaded(true);
