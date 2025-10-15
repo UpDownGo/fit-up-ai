@@ -25,10 +25,10 @@ export const LocalizationProvider: React.FC<{ children: ReactNode }> = ({ childr
         const isViteEnv = typeof import.meta !== 'undefined' && typeof import.meta.env !== 'undefined' && import.meta.env.MODE;
         
         // Vercel/Vite serves the `public` dir at the root ('/').
-        // AI Studio serves the project file structure as-is, so we need to include `public` in the path.
+        // AI Studio serves the project file structure as-is, so we need a relative path from index.html.
         const path = isViteEnv
             ? `/locales/${language}.json`
-            : `/public/locales/${language}.json`;
+            : `./public/locales/${language}.json`; // Use relative path for AI Studio
 
         const response = await fetch(path);
         if (!response.ok) {

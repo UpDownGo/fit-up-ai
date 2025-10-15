@@ -1,19 +1,39 @@
-// Fix: Create the geminiService module with exports to resolve import errors.
-// This file implements the core logic for interacting with the Google Gemini API.
+// src/services/geminiService.ts
 
 import { GoogleGenAI, Modality, Type } from '@google/genai';
 import { BoundingBox, DetectedPerson } from '../types';
 
 /**
+ * Retrieves the Gemini API key from the appropriate environment variable.
+ * Handles both Vite/Vercel (import.meta.env) and Google AI Studio (process.env).
+ * @returns The API key string, or undefined if not found.
+ */
+const getApiKey = (): string | undefined => {
+    try {
+        // Vercel/Vite environment variable (`.env` file or Vercel dashboard)
+        // @ts-ignore
+        if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
+            // @ts-ignore
+            return import.meta.env.VITE_API_KEY;
+        }
+        // Google AI Studio injected environment variable
+        // @ts-ignore
+        if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+            // @ts-ignore
+            return process.env.API_KEY;
+        }
+    } catch (e) {
+        console.error("Could not retrieve API key from environment:", e);
+    }
+    return undefined;
+};
+
+
+/**
  * Checks if the Gemini API key is available in the environment.
- * Per coding guidelines, this must use process.env.API_KEY. In a Vite/frontend
- * environment, this variable must be injected via the build process.
- * We use @ts-ignore to suppress TypeScript errors as `process` is not standard
- * in browser environments.
  */
 export const isApiKeyAvailable = (): boolean => {
-  // @ts-ignore
-  return !!process.env.API_KEY;
+  return !!getApiKey();
 };
 
 /**
@@ -21,13 +41,12 @@ export const isApiKeyAvailable = (): boolean => {
  * Throws an error if the API key is missing.
  */
 const getAi = () => {
-  // @ts-ignore
-  if (!process.env.API_KEY) {
+  const apiKey = getApiKey();
+  if (!apiKey) {
     // This error message key will be used by the UI to show a localized message.
     throw new Error('apiKeyMissing');
   }
-  // @ts-ignore
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return new GoogleGenAI({ apiKey });
 };
 
 /**
@@ -109,7 +128,10 @@ export const detectPeopleInImage = async (
             },
         });
 
-        const text = response.text.trim();
+        const text = response.text?.trim();
+        if (!text) {
+             return [];
+        }
         const json = JSON.parse(text);
 
         if (!json.people || !Array.isArray(json.people)) {
@@ -189,11 +211,14 @@ export const generateVirtualTryOnImage = async (
             },
         });
         
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-                const base64ImageBytes: string = part.inlineData.data;
-                const mimeType = part.inlineData.mimeType;
-                return `data:${mimeType};base64,${base64ImageBytes}`;
+        const parts = response.candidates?.[0]?.content?.parts;
+        if (parts) {
+            for (const part of parts) {
+                if (part.inlineData) {
+                    const base64ImageBytes: string = part.inlineData.data;
+                    const mimeType = part.inlineData.mimeType;
+                    return `data:${mimeType};base64,${base64ImageBytes}`;
+                }
             }
         }
         
