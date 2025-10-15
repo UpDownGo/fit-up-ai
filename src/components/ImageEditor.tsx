@@ -39,13 +39,12 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
   }, []);
 
-  // Effect to initialize or update the adjustable box for mobile devices
+  // Effect to initialize or update the adjustable box, syncing with the parent's `garmentBox`
   useEffect(() => {
-    if (!isTouchDevice || canvasSize.width === 0) {
-      setAdjustableBox(null);
-      return;
-    }
+    // This effect ensures the touch UI (adjustableBox) reflects the official state (`garmentBox`).
+    if (canvasSize.width === 0) return;
 
+    // The confirmed `garmentBox` from the parent is the source of truth.
     if (garmentBox) {
         setAdjustableBox({
             x: garmentBox.x * canvasSize.width,
@@ -53,7 +52,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
             width: garmentBox.width * canvasSize.width,
             height: garmentBox.height * canvasSize.height,
         });
-    } else if (!adjustableBox) { // Only set default if it doesn't exist
+    } else if (isTouchDevice && !adjustableBox) { // Only set a default box on initial load for touch devices
         const defaultWidth = canvasSize.width * 0.5;
         const defaultHeight = canvasSize.height * 0.5;
         setAdjustableBox({
@@ -64,7 +63,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTouchDevice, canvasSize.width, canvasSize.height]);
+  }, [isTouchDevice, garmentBox, canvasSize.width, canvasSize.height]);
 
 
   const draw = useCallback(() => {
@@ -133,22 +132,23 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
         }, 'rgba(0, 128, 255, 0.7)', 3);
       }
 
-      if (isTouchDevice) {
+      // Drawing logic: Mouse drawing takes precedence over other displays.
+      if (isDrawing && desktopBox) {
+        // Always show the box being drawn with the mouse.
+        drawStyledBox(desktopBox, boxColor, 3);
+      } else if (isTouchDevice) {
+        // On touch devices, show the adjustable box when not drawing with a mouse.
         if (adjustableBox) {
           drawStyledBox(adjustableBox, boxColor, 3, true);
         }
-      } else {
-         if (garmentBox && !isDrawing) {
-            drawStyledBox({
+      } else if (garmentBox) {
+        // On non-touch devices, show the final selected box.
+         drawStyledBox({
               x: garmentBox.x * canvas.width,
               y: garmentBox.y * canvas.height,
               width: garmentBox.width * canvas.width,
               height: garmentBox.height * canvas.height,
-            }, boxColor, 3);
-          }
-          if (desktopBox && isDrawing) {
-            drawStyledBox(desktopBox, boxColor, 3);
-          }
+         }, boxColor, 3);
       }
     };
   }, [imageSrc, desktopBox, boxColor, existingBox, garmentBox, isDrawing, adjustableBox, isTouchDevice, canvasSize, dragState]);
@@ -168,16 +168,15 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
     return { x: clientX - rect.left, y: clientY - rect.top };
   };
 
-  // --- Desktop Mouse Handlers ---
+  // --- Desktop Mouse Handlers (now enabled on all devices) ---
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isTouchDevice) return;
     const pos = getCanvasPos(e.clientX, e.clientY);
     setIsDrawing(true);
     setStartPoint(pos);
     setDesktopBox({ ...pos, width: 0, height: 0 });
   };
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isTouchDevice || !isDrawing || !startPoint) return;
+    if (!isDrawing || !startPoint) return;
     const pos = getCanvasPos(e.clientX, e.clientY);
     setDesktopBox({
       x: Math.min(pos.x, startPoint.x),
@@ -187,7 +186,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
     });
   };
   const handleMouseUp = () => {
-    if (isTouchDevice || !isDrawing) return;
+    if (!isDrawing) return;
     setIsDrawing(false);
     if (!desktopBox || !canvasRef.current || desktopBox.width < 10 || desktopBox.height < 10) {
       setDesktopBox(null); return;
@@ -302,7 +301,7 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({ imageSrc, onBoxDrawn, 
           ref={canvasRef}
           onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
           onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-          className={`rounded-lg shadow-lg ${isTouchDevice ? '' : 'cursor-crosshair'}`}
+          className={`rounded-lg shadow-lg ${!isTouchDevice || isDrawing ? 'cursor-crosshair' : ''}`}
         />
       </div>
       {isTouchDevice && (
